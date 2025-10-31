@@ -1,0 +1,7 @@
+dist
+.DS_Store
+server/public
+*.tar.gz
+.git.backup.*
+.venv
+.env
