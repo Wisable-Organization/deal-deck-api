@@ -5,3 +5,12 @@ server/public
 .git.backup.*
 .venv
 .env
+auth_users_ddl.sql
+formatted_insert.sql
+migrate_to_users_table.sql
+apply_migration.py
+import_deals_from_supabase.py
+sync_supabase_data.py
+MIGRATION_SUMMARY.md
+supabase_schema.sql
+api/__pycache__

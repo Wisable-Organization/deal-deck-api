@@ -1,15 +1,20 @@
-from typing import List, Optional
-from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel, Field
+from typing import List, Optional, Dict, Any
+from fastapi import APIRouter, HTTPException, Query, Body
 from datetime import datetime
 import os
 from dotenv import load_dotenv
+from sqlalchemy.orm import sessionmaker
+from marshmallow import ValidationError
 
-# Import all models from api.models to avoid type mismatches
-from .models import (
-    Deal, Contact, BuyingParty, DealBuyerMatch, Activity, Document,
-    DealCreate, DealUpdate, ContactCreate, BuyingPartyCreate, BuyingPartyUpdate,
-    ActivityCreate, ActivityUpdate, DocumentCreate, MatchCreate
+# Import marshmallow schemas
+from .schemas import (
+    DealResponseSchema, DealCreateSchema, DealUpdateSchema, NotesUpdateSchema,
+    ContactResponseSchema, ContactCreateSchema,
+    BuyingPartyResponseSchema, BuyingPartyCreateSchema, BuyingPartyUpdateSchema,
+    DealBuyerMatchResponseSchema, MatchCreateSchema,
+    ActivityResponseSchema, ActivityCreateSchema, ActivityUpdateSchema,
+    DocumentResponseSchema, DocumentCreateSchema,
+    BuyerRowSchema, PartyMatchRowSchema, MeetingSummarySchema
 )
 
 # Load environment variables
@@ -18,20 +23,16 @@ load_dotenv()
 # Storage selection with lazy initialization
 def get_storage():
     """Get storage instance with proper initialization"""
-    if os.getenv("SUPABASE_URL") and os.getenv("SUPABASE_SERVICE_ROLE_KEY"):
-        try:
-            from .simple_supabase_storage import SimpleSupabaseStorage
-            storage = SimpleSupabaseStorage()
-            print("🔗 Using Supabase storage")
-            return storage
-        except Exception as e:
-            print(f"⚠️  Supabase failed: {e}")
-            print("💾 Falling back to in-memory storage")
-            from .memory_storage import MemoryStorage
-            return MemoryStorage()
-    else:
+    # Try local PostgreSQL
+    try:
+        from .storage import Storage
+        storage = Storage()
+        print("🗄️  Using local PostgreSQL storage")
+        return storage
+    except Exception as e:
+        print(f"⚠️  Local PostgreSQL failed: {e}")
+        print("💾 Falling back to in-memory storage")
         from .memory_storage import MemoryStorage
-        print("💾 Using in-memory storage (no Supabase credentials)")
         return MemoryStorage()
 
 # Initialize storage
@@ -40,36 +41,41 @@ storage = get_storage()
 router = APIRouter()
 
 
-# NotesUpdate model for PATCH endpoint
-class NotesUpdate(BaseModel):
-    notes: str = Field(min_length=0)
-
-
 # Routes — Deals
-@router.get("/deals", response_model=List[Deal])
+@router.get("/deals")
 async def list_deals():
-    return await storage.get_deals()
+    deals = await storage.get_deals()
+    return [DealResponseSchema().dump(deal) for deal in deals]
 
 
-@router.get("/deals/{deal_id}", response_model=Deal)
+@router.get("/deals/{deal_id}")
 async def get_deal(deal_id: str):
     deal = await storage.get_deal(deal_id)
     if not deal:
         raise HTTPException(status_code=404, detail="Deal not found")
-    return deal
+    return DealResponseSchema().dump(deal)
 
 
-@router.post("/deals", response_model=Deal, status_code=201)
-async def create_deal(payload: DealCreate):
-    return await storage.create_deal(payload)
+@router.post("/deals", status_code=201)
+async def create_deal(payload: Dict[str, Any] = Body(...)):
+    try:
+        validated = DealCreateSchema().load(payload)
+    except ValidationError as e:
+        raise HTTPException(status_code=422, detail=e.messages)
+    deal = await storage.create_deal(validated)
+    return DealResponseSchema().dump(deal)
 
 
-@router.patch("/deals/{deal_id}", response_model=Deal)
-async def update_deal(deal_id: str, payload: DealUpdate):
-    deal = await storage.update_deal(deal_id, payload)
+@router.patch("/deals/{deal_id}")
+async def update_deal(deal_id: str, payload: Dict[str, Any] = Body(...)):
+    try:
+        validated = DealUpdateSchema().load(payload)
+    except ValidationError as e:
+        raise HTTPException(status_code=422, detail=e.messages)
+    deal = await storage.update_deal(deal_id, validated)
     if not deal:
         raise HTTPException(status_code=404, detail="Deal not found")
-    return deal
+    return DealResponseSchema().dump(deal)
 
 
 @router.delete("/deals/{deal_id}", status_code=204)
@@ -79,59 +85,70 @@ async def delete_deal(deal_id: str):
         raise HTTPException(status_code=404, detail="Deal not found")
 
 
-@router.patch("/deals/{deal_id}/notes", response_model=Deal)
-async def update_deal_notes(deal_id: str, payload: NotesUpdate):
-    deal = await storage.update_deal_notes(deal_id, payload.notes)
+@router.patch("/deals/{deal_id}/notes")
+async def update_deal_notes(deal_id: str, payload: Dict[str, Any] = Body(...)):
+    try:
+        validated = NotesUpdateSchema().load(payload)
+    except ValidationError as e:
+        raise HTTPException(status_code=422, detail=e.messages)
+    deal = await storage.update_deal_notes(deal_id, validated["notes"])
     if not deal:
         raise HTTPException(status_code=404, detail="Deal not found")
-    return deal
+    return DealResponseSchema().dump(deal)
 
 
 # Composite: buyers for a deal
-class BuyerRow(BaseModel):
-    match: DealBuyerMatch
-    party: BuyingParty
-    contact: Optional[Contact] = None
-
-
-@router.get("/deals/{deal_id}/buyers", response_model=List[BuyerRow])
+@router.get("/deals/{deal_id}/buyers")
 async def deal_buyers(deal_id: str):
     # Get matches for this deal
     matches = await storage.get_deal_buyer_matches(deal_id)
-    rows: List[BuyerRow] = []
+    rows = []
     
     for match in matches:
         # Get the buying party
-        party = await storage.get_buying_party(match.buyingPartyId)
+        party = await storage.get_buying_party(match["buying_party_id"])
         if not party:
             continue
             
         # Get the first contact for this party
-        contacts = await storage.get_contacts_by_entity(party.id, "buying_party")
+        contacts = await storage.get_contacts_by_entity(party["id"], "buying_party")
         contact = contacts[0] if contacts else None
         
-        rows.append(BuyerRow(match=match, party=party, contact=contact))
+        row = {
+            "match": match,
+            "party": party,
+            "contact": contact
+        }
+        rows.append(BuyerRowSchema().dump(row))
     
     return rows
 
 
-@router.get("/deals/{deal_id}/buyers-with-nda", response_model=List[BuyingParty])
+@router.get("/deals/{deal_id}/buyers-with-nda")
 async def deal_buyers_with_signed_nda(deal_id: str):
     """Get buying parties that have signed NDAs for this deal"""
-    return await storage.get_buyers_with_signed_nda(deal_id)
+    parties = await storage.get_buyers_with_signed_nda(deal_id)
+    return [BuyingPartyResponseSchema().dump(party) for party in parties]
 
 
 # Contacts
-@router.get("/contacts", response_model=List[Contact])
-async def list_contacts(entityId: Optional[str] = Query(None), entityType: Optional[str] = Query(None)):
-    if entityId and entityType:
-        return await storage.get_contacts_by_entity(entityId, entityType)
-    return await storage.get_contacts()
+@router.get("/contacts")
+async def list_contacts(entity_id: Optional[str] = Query(None), entity_type: Optional[str] = Query(None)):
+    if entity_id and entity_type:
+        contacts = await storage.get_contacts_by_entity(entity_id, entity_type)
+    else:
+        contacts = await storage.get_contacts()
+    return [ContactResponseSchema().dump(contact) for contact in contacts]
 
 
-@router.post("/contacts", response_model=Contact, status_code=201)
-async def create_contact(payload: ContactCreate):
-    return await storage.create_contact(payload)
+@router.post("/contacts", status_code=201)
+async def create_contact(payload: Dict[str, Any] = Body(...)):
+    try:
+        validated = ContactCreateSchema().load(payload)
+    except ValidationError as e:
+        raise HTTPException(status_code=422, detail=e.messages)
+    contact = await storage.create_contact(validated)
+    return ContactResponseSchema().dump(contact)
 
 
 @router.delete("/contacts/{contact_id}", status_code=204)
@@ -142,30 +159,40 @@ async def delete_contact(contact_id: str):
 
 
 # Buying Parties
-@router.get("/buying-parties", response_model=List[BuyingParty])
+@router.get("/buying-parties")
 async def list_buying_parties():
-    return await storage.get_buying_parties()
+    parties = await storage.get_buying_parties()
+    return [BuyingPartyResponseSchema().dump(party) for party in parties]
 
 
-@router.get("/buying-parties/{party_id}", response_model=BuyingParty)
+@router.get("/buying-parties/{party_id}")
 async def get_buying_party(party_id: str):
     party = await storage.get_buying_party(party_id)
     if not party:
         raise HTTPException(status_code=404, detail="Buying party not found")
-    return party
+    return BuyingPartyResponseSchema().dump(party)
 
 
-@router.post("/buying-parties", response_model=BuyingParty, status_code=201)
-async def create_buying_party(payload: BuyingPartyCreate):
-    return await storage.create_buying_party(payload)
+@router.post("/buying-parties", status_code=201)
+async def create_buying_party(payload: Dict[str, Any] = Body(...)):
+    try:
+        validated = BuyingPartyCreateSchema().load(payload)
+    except ValidationError as e:
+        raise HTTPException(status_code=422, detail=e.messages)
+    party = await storage.create_buying_party(validated)
+    return BuyingPartyResponseSchema().dump(party)
 
 
-@router.patch("/buying-parties/{party_id}", response_model=BuyingParty)
-async def update_buying_party(party_id: str, payload: BuyingPartyUpdate):
-    party = await storage.update_buying_party(party_id, payload)
+@router.patch("/buying-parties/{party_id}")
+async def update_buying_party(party_id: str, payload: Dict[str, Any] = Body(...)):
+    try:
+        validated = BuyingPartyUpdateSchema().load(payload)
+    except ValidationError as e:
+        raise HTTPException(status_code=422, detail=e.messages)
+    party = await storage.update_buying_party(party_id, validated)
     if not party:
         raise HTTPException(status_code=404, detail="Buying party not found")
-    return party
+    return BuyingPartyResponseSchema().dump(party)
 
 
 @router.delete("/buying-parties/{party_id}", status_code=204)
@@ -175,56 +202,70 @@ async def delete_buying_party(party_id: str):
         raise HTTPException(status_code=404, detail="Buying party not found")
 
 
-@router.patch("/buying-parties/{party_id}/notes", response_model=BuyingParty)
-async def update_party_notes(party_id: str, payload: NotesUpdate):
-    party = await storage.update_buying_party_notes(party_id, payload.notes)
+@router.patch("/buying-parties/{party_id}/notes")
+async def update_party_notes(party_id: str, payload: Dict[str, Any] = Body(...)):
+    try:
+        validated = NotesUpdateSchema().load(payload)
+    except ValidationError as e:
+        raise HTTPException(status_code=422, detail=e.messages)
+    party = await storage.update_buying_party_notes(party_id, validated["notes"])
     if not party:
         raise HTTPException(status_code=404, detail="Buying party not found")
-    return party
+    return BuyingPartyResponseSchema().dump(party)
 
 
 # Composite: deals for a buying party (matches)
-class PartyMatchRow(BaseModel):
-    match: DealBuyerMatch
-    deal: Deal
-
-
-@router.get("/buying-parties/{party_id}/matches", response_model=List[PartyMatchRow])
+@router.get("/buying-parties/{party_id}/matches")
 async def party_matches(party_id: str):
     # Get matches for this buying party
     matches = await storage.get_buying_party_matches(party_id)
-    rows: List[PartyMatchRow] = []
+    rows = []
     
     for match in matches:
         # Get the deal
-        deal = await storage.get_deal(match.dealId)
+        deal = await storage.get_deal(match["deal_id"])
         if not deal:
             continue
         
-        rows.append(PartyMatchRow(match=match, deal=deal))
+        row = {
+            "match": match,
+            "deal": deal
+        }
+        rows.append(PartyMatchRowSchema().dump(row))
     
     return rows
 
 
 # Activities
-@router.get("/activities", response_model=List[Activity])
-async def list_activities(entityId: Optional[str] = Query(None)):
-    if entityId:
-        return await storage.get_activities_by_entity(entityId)
-    return await storage.get_activities()
+@router.get("/activities")
+async def list_activities(entity_id: Optional[str] = Query(None)):
+    if entity_id:
+        activities = await storage.get_activities_by_entity(entity_id)
+    else:
+        activities = await storage.get_activities()
+    return [ActivityResponseSchema().dump(activity) for activity in activities]
 
 
-@router.post("/activities", response_model=Activity, status_code=201)
-async def create_activity(payload: ActivityCreate):
-    return await storage.create_activity(payload)
+@router.post("/activities", status_code=201)
+async def create_activity(payload: Dict[str, Any] = Body(...)):
+    try:
+        validated = ActivityCreateSchema().load(payload)
+    except ValidationError as e:
+        raise HTTPException(status_code=422, detail=e.messages)
+    activity = await storage.create_activity(validated)
+    return ActivityResponseSchema().dump(activity)
 
 
-@router.patch("/activities/{activity_id}", response_model=Activity)
-async def update_activity(activity_id: str, payload: ActivityUpdate):
-    activity = await storage.update_activity(activity_id, payload)
+@router.patch("/activities/{activity_id}")
+async def update_activity(activity_id: str, payload: Dict[str, Any] = Body(...)):
+    try:
+        validated = ActivityUpdateSchema().load(payload)
+    except ValidationError as e:
+        raise HTTPException(status_code=422, detail=e.messages)
+    activity = await storage.update_activity(activity_id, validated)
     if not activity:
         raise HTTPException(status_code=404, detail="Activity not found")
-    return activity
+    return ActivityResponseSchema().dump(activity)
 
 
 @router.delete("/activities/{activity_id}", status_code=204)
@@ -235,16 +276,23 @@ async def delete_activity(activity_id: str):
 
 
 # Documents
-@router.get("/documents", response_model=List[Document])
-async def list_documents(entityId: Optional[str] = Query(None)):
-    if entityId:
-        return await storage.get_documents_by_entity(entityId)
-    return await storage.get_documents()
+@router.get("/documents")
+async def list_documents(entity_id: Optional[str] = Query(None)):
+    if entity_id:
+        documents = await storage.get_documents_by_entity(entity_id)
+    else:
+        documents = await storage.get_documents()
+    return [DocumentResponseSchema().dump(document) for document in documents]
 
 
-@router.post("/documents", response_model=Document, status_code=201)
-async def create_document(payload: DocumentCreate):
-    return await storage.create_document(payload)
+@router.post("/documents", status_code=201)
+async def create_document(payload: Dict[str, Any] = Body(...)):
+    try:
+        validated = DocumentCreateSchema().load(payload)
+    except ValidationError as e:
+        raise HTTPException(status_code=422, detail=e.messages)
+    document = await storage.create_document(validated)
+    return DocumentResponseSchema().dump(document)
 
 
 @router.delete("/documents/{document_id}", status_code=204)
@@ -255,9 +303,14 @@ async def delete_document(document_id: str):
 
 
 # Matches
-@router.post("/deal-buyer-matches", response_model=DealBuyerMatch, status_code=201)
-async def create_match(payload: MatchCreate):
-    return await storage.create_deal_buyer_match(payload)
+@router.post("/deal-buyer-matches", status_code=201)
+async def create_match(payload: Dict[str, Any] = Body(...)):
+    try:
+        validated = MatchCreateSchema().load(payload)
+    except ValidationError as e:
+        raise HTTPException(status_code=422, detail=e.messages)
+    match = await storage.create_deal_buyer_match(validated)
+    return DealBuyerMatchResponseSchema().dump(match)
 
 
 @router.delete("/deal-buyer-matches/{match_id}", status_code=204)
@@ -268,14 +321,8 @@ async def delete_match(match_id: str):
 
 
 # Meetings (latest summary) — stub for UI
-class MeetingSummary(BaseModel):
-    summary: str
-    createdAt: datetime
-    source: Optional[str] = None
-
-
-@router.get("/meetings/latest-summary", response_model=Optional[MeetingSummary])
-def latest_summary(dealId: str = Query(...)):
+@router.get("/meetings/latest-summary")
+async def latest_summary(deal_id: str = Query(...)):
     # For now, return None; can be wired to external integrations later
     return None
 
