@@ -33,7 +33,7 @@ def start_vite():
     try:
         # Run Vite from root directory (package.json is here)
         subprocess.run([
-            "npm", "run", "dev"
+            "cd", "../deal-deck-client", "&&", "npm", "run", "dev"
         ], check=True)
     except subprocess.CalledProcessError as e:
         print(f"❌ Vite failed to start: {e}")
@@ -56,26 +56,18 @@ def main():
     # Clean up any conflicting processes first
     print("🧹 Cleaning up any conflicting processes...")
     try:
-        subprocess.run(["python", "cleanup.py"], check=False)
+        #subprocess.run(["python", "cleanup.py"], check=False)
+        pass
     except:
         pass
     
     # Set up signal handler for graceful shutdown
     signal.signal(signal.SIGINT, signal_handler)
     
-    # Start FastAPI in a separate thread
-    fastapi_thread = threading.Thread(target=start_fastapi, daemon=True)
-    fastapi_thread.start()
-    
-    # Wait a moment for FastAPI to start
-    time.sleep(3)
-    
-    # Start Vite in the main thread (so we can handle Ctrl+C properly)
+    # Start FastAPI in the main thread (blocking to keep process alive)
     try:
-        pass
+        start_fastapi()
     except KeyboardInterrupt:
-        print("\n🛑 Shutting down...")
-        sys.exit(0)
-
+        signal_handler(signal.SIGINT, None)
 if __name__ == "__main__":
     main()

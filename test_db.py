@@ -2,10 +2,10 @@
 """Test script to check database directly"""
 import asyncio
 import os
-from api.simple_supabase_storage import SimpleSupabaseStorage
+from api.storage import Storage
 
 async def main():
-    storage = SimpleSupabaseStorage()
+    storage = Storage()
     
     print("=== Testing Deals ===")
     deals = await storage.get_deals()

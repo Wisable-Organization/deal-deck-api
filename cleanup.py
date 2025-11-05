@@ -33,7 +33,7 @@ def kill_processes():
     
     # Kill any vite processes
     try:
-        subprocess.run(["pkill", "-f", "vite"], check=False)
+        #subprocess.run(["pkill", "-f", "vite"], check=False)
         print("✅ Killed vite processes")
     except:
         print("ℹ️  No vite processes found")
