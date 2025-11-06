@@ -4,10 +4,9 @@ Marshmallow schemas for serialization/deserialization
 
 import marshmallow as ma
 from marshmallow import fields, validate, ValidationError
-from marshmallow_sqlalchemy import SQLAlchemySchema, auto_field
 from typing import Optional
 from datetime import datetime
-from .models import (
+from api.models import (
     Base, Company, CompanyMetric, Deal, Contact, CompanyContact,
     BuyingParty, DealBuyerMatch, Activity, Document
 )
@@ -17,7 +16,7 @@ def camelcase(s):
     return next(parts) + "".join(i.title() for i in parts)
 
 
-class BaseSchema(SQLAlchemySchema):
+class BaseSchema(ma.Schema):
     """Base schema with model property"""
     
     class Meta:
@@ -27,154 +26,6 @@ class BaseSchema(SQLAlchemySchema):
     
     def on_bind_field(self, field_name, field_obj):
         field_obj.data_key = camelcase(field_obj.data_key or field_name)
-
-
-class CompanySchema(BaseSchema):
-    """Schema for Company model"""
-    
-    class Meta:
-        model = Company
-        
-    id = auto_field()
-    name = auto_field()
-    created_at = auto_field()
-
-
-class CompanyMetricSchema(BaseSchema):
-    """Schema for CompanyMetric model"""
-    
-    class Meta:
-        model = CompanyMetric
-        
-    id = auto_field()
-    company_id = auto_field()
-    type = auto_field()
-    value = auto_field()
-    fiscal_year = auto_field()
-    created_at = auto_field()
-
-
-class DealSchema(BaseSchema):
-    """Schema for Deal model"""
-    
-    class Meta:
-        model = Deal
-        
-    id = auto_field()
-    company_id = auto_field()
-    stage = auto_field()
-    priority = auto_field()
-    sde = auto_field()
-    valuation_min = auto_field()
-    valuation_max = auto_field()
-    sde_multiple = auto_field()
-    revenue_multiple = auto_field()
-    commission = auto_field()
-    description = auto_field()
-    notes = auto_field()
-    next_step_days = auto_field()
-    touches = auto_field()
-    age_in_stage = auto_field()
-    health_score = auto_field()
-    owner = auto_field()
-    created_at = auto_field()
-
-
-class ContactSchema(BaseSchema):
-    """Schema for Contact model"""
-    
-    class Meta:
-        model = Contact
-        
-    id = auto_field()
-    name = auto_field()
-    role = auto_field()
-    email = auto_field()
-    phone = auto_field()
-    entity_id = auto_field()
-    entity_type = auto_field()
-    created_at = auto_field()
-
-
-class CompanyContactSchema(BaseSchema):
-    """Schema for CompanyContact model"""
-    
-    class Meta:
-        model = CompanyContact
-        
-    contact_id = auto_field()
-    company_id = auto_field()
-    contact_role = auto_field()
-    created_at = auto_field()
-
-
-class BuyingPartySchema(BaseSchema):
-    """Schema for BuyingParty model"""
-    
-    class Meta:
-        model = BuyingParty
-        
-    id = auto_field()
-    name = auto_field()
-    target_acquisition_min = auto_field()
-    target_acquisition_max = auto_field()
-    budget_min = auto_field()
-    budget_max = auto_field()
-    timeline = auto_field()
-    status = auto_field()
-    notes = auto_field()
-    created_at = auto_field()
-
-
-class DealBuyerMatchSchema(BaseSchema):
-    """Schema for DealBuyerMatch model"""
-    
-    class Meta:
-        model = DealBuyerMatch
-        
-    id = auto_field()
-    deal_id = auto_field()
-    buying_party_id = auto_field()
-    target_acquisition = auto_field()
-    budget = auto_field()
-    status = auto_field()
-    created_at = auto_field()
-
-
-class ActivitySchema(BaseSchema):
-    """Schema for Activity model"""
-    
-    class Meta:
-        model = Activity
-        
-    id = auto_field()
-    deal_id = auto_field()
-    buying_party_id = auto_field()
-    type = auto_field()
-    title = auto_field()
-    description = auto_field()
-    status = auto_field()
-    assigned_to = auto_field()
-    due_date = auto_field()
-    completed_at = auto_field()
-    created_at = auto_field()
-
-
-class DocumentSchema(BaseSchema):
-    """Schema for Document model"""
-    
-    class Meta:
-        model = Document
-        
-    id = auto_field()
-    deal_id = auto_field()
-    name = auto_field()
-    status = auto_field()
-    doc_type = auto_field()
-    created_at = auto_field()
-
-
-# Request/Response schemas for API (with computed fields)
 class DealResponseSchema(BaseSchema):
     """Schema for Deal API response (includes company_name and revenue)"""
     id = fields.Str(required=True)

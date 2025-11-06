@@ -9,10 +9,10 @@ from datetime import datetime
 from sqlalchemy import create_engine, select, func, or_
 from sqlalchemy.orm import sessionmaker, joinedload
 from sqlalchemy.pool import NullPool
-from .models import (
-    Base, Company, CompanyMetric, Deal as DealORM, Contact as ContactORM,
-    BuyingParty as BuyingPartyORM, DealBuyerMatch as DealBuyerMatchORM,
-    Activity as ActivityORM, Document as DocumentORM, CompanyContact
+from api.models import (
+    Base, Company, CompanyMetric, Deal, Contact,
+    BuyingParty, DealBuyerMatch,
+    Activity, Document, CompanyContact, User
 )
 
 
@@ -47,28 +47,28 @@ class Storage:
             session.refresh(company)
             return company.id
 
-    def _deal_orm_to_dict(self, deal_orm: DealORM, company_name: str = None, revenue: float = None) -> Dict[str, Any]:
-        """Convert ORM Deal object to dict"""
+    def _deal_instance_to_dict(self, deal_instance: Deal, company_name: str = None, revenue: float = None) -> Dict[str, Any]:
+        """Convert  Deal object to dict"""
         return {
-            "id": str(deal_orm.id),
+            "id": str(deal_instance.id),
             "company_name": company_name or "Unknown Company",
             "revenue": str(revenue) if revenue else "",
-            "sde": str(deal_orm.sde) if deal_orm.sde else None,
-            "valuation_min": str(deal_orm.valuation_min) if deal_orm.valuation_min else None,
-            "valuation_max": str(deal_orm.valuation_max) if deal_orm.valuation_max else None,
-            "sde_multiple": str(deal_orm.sde_multiple) if deal_orm.sde_multiple else None,
-            "revenue_multiple": str(deal_orm.revenue_multiple) if deal_orm.revenue_multiple else None,
-            "commission": str(deal_orm.commission) if deal_orm.commission else None,
-            "stage": deal_orm.stage or "",
-            "priority": deal_orm.priority or "medium",
-            "description": deal_orm.description,
-            "notes": deal_orm.notes,
-            "next_step_days": deal_orm.next_step_days,
-            "touches": deal_orm.touches or 0,
-            "age_in_stage": deal_orm.age_in_stage or 0,
-            "health_score": deal_orm.health_score or 85,
-            "owner": deal_orm.owner or "",
-            "created_at": deal_orm.created_at or datetime.utcnow()
+            "sde": str(deal_instance.sde) if deal_instance.sde else None,
+            "valuation_min": str(deal_instance.valuation_min) if deal_instance.valuation_min else None,
+            "valuation_max": str(deal_instance.valuation_max) if deal_instance.valuation_max else None,
+            "sde_multiple": str(deal_instance.sde_multiple) if deal_instance.sde_multiple else None,
+            "revenue_multiple": str(deal_instance.revenue_multiple) if deal_instance.revenue_multiple else None,
+            "commission": str(deal_instance.commission) if deal_instance.commission else None,
+            "stage": deal_instance.stage or "",
+            "priority": deal_instance.priority or "medium",
+            "description": deal_instance.description,
+            "notes": deal_instance.notes,
+            "next_step_days": deal_instance.next_step_days,
+            "touches": deal_instance.touches or 0,
+            "age_in_stage": deal_instance.age_in_stage or 0,
+            "health_score": deal_instance.health_score or 85,
+            "owner": deal_instance.owner or "",
+            "created_at": deal_instance.created_at or datetime.utcnow()
         }
 
     # Deals
@@ -76,9 +76,9 @@ class Storage:
         with self.Session() as session:
             # Get deals with company and latest revenue metric
             deals = session.scalars(
-                select(DealORM)
-                .options(joinedload(DealORM.company))
-                .order_by(DealORM.created_at.desc())
+                select(Deal)
+                .options(joinedload(Deal.company))
+                .order_by(Deal.created_at.desc())
             ).all()
             
             result = []
@@ -95,16 +95,16 @@ class Storage:
                 )
                 revenue = float(revenue_metric) if revenue_metric else 0.0
                 company_name = deal.company.name if deal.company else "Unknown Company"
-                result.append(self._deal_orm_to_dict(deal, company_name, revenue))
+                result.append(self._deal_instance_to_dict(deal, company_name, revenue))
             
             return result
 
     async def get_deal(self, deal_id: str) -> Optional[Dict[str, Any]]:
         with self.Session() as session:
             deal = session.scalar(
-                select(DealORM)
-                .options(joinedload(DealORM.company))
-                .where(DealORM.id == deal_id)
+                select(Deal)
+                .options(joinedload(Deal.company))
+                .where(Deal.id == deal_id)
             )
             
             if not deal:
@@ -122,7 +122,7 @@ class Storage:
             )
             revenue = float(revenue_metric) if revenue_metric else 0.0
             company_name = deal.company.name if deal.company else "Unknown Company"
-            return self._deal_orm_to_dict(deal, company_name, revenue)
+            return self._deal_instance_to_dict(deal, company_name, revenue)
 
     async def create_deal(self, deal: Dict[str, Any]) -> Dict[str, Any]:
         company_id = self._get_company_id(deal["company_name"])
@@ -150,7 +150,7 @@ class Storage:
                     session.add(metric)
             
             # Create the deal
-            deal_orm = DealORM(
+            deal_instance = Deal(
                 company_id=company_id,
                 stage=deal["stage"],
                 priority=deal.get("priority", "medium"),
@@ -169,10 +169,10 @@ class Storage:
                 owner=deal["owner"],
                 created_at=datetime.utcnow()
             )
-            session.add(deal_orm)
+            session.add(deal_instance)
             session.commit()
-            session.refresh(deal_orm)
-            deal_id = str(deal_orm.id)
+            session.refresh(deal_instance)
+            deal_id = str(deal_instance.id)
         
         return await self.get_deal(deal_id)
 
@@ -181,7 +181,7 @@ class Storage:
             return await self.get_deal(deal_id)
         
         with self.Session() as session:
-            deal = session.scalar(select(DealORM).where(DealORM.id == deal_id))
+            deal = session.scalar(select(Deal).where(Deal.id == deal_id))
             if not deal:
                 return None
             
@@ -226,7 +226,7 @@ class Storage:
 
     async def delete_deal(self, deal_id: str) -> bool:
         with self.Session() as session:
-            deal = session.scalar(select(DealORM).where(DealORM.id == deal_id))
+            deal = session.scalar(select(Deal).where(Deal.id == deal_id))
             if not deal:
                 return False
             session.delete(deal)
@@ -235,7 +235,7 @@ class Storage:
 
     async def update_deal_notes(self, deal_id: str, notes: str) -> Optional[Dict[str, Any]]:
         with self.Session() as session:
-            deal = session.scalar(select(DealORM).where(DealORM.id == deal_id))
+            deal = session.scalar(select(Deal).where(Deal.id == deal_id))
             if not deal:
                 return None
             deal.notes = notes
@@ -245,7 +245,7 @@ class Storage:
     # Contacts
     async def get_contacts(self) -> List[Dict[str, Any]]:
         with self.Session() as session:
-            contacts = session.scalars(select(ContactORM)).all()
+            contacts = session.scalars(select(Contact)).all()
             return [{
                 "id": str(c.id), "name": c.name, "role": c.role,
                 "email": c.email, "phone": c.phone,
@@ -257,9 +257,9 @@ class Storage:
             if entity_type == "deal":
                 # Get contacts through company
                 deal = session.scalar(
-                    select(DealORM)
-                    .options(joinedload(DealORM.company))
-                    .where(DealORM.id == entity_id)
+                    select(Deal)
+                    .options(joinedload(Deal.company))
+                    .where(Deal.id == entity_id)
                 )
                 if not deal or not deal.company:
                     return []
@@ -278,9 +278,9 @@ class Storage:
                 } for cc in company_contacts]
             else:
                 contacts = session.scalars(
-                    select(ContactORM).where(
-                        ContactORM.entity_id == entity_id,
-                        ContactORM.entity_type == entity_type
+                    select(Contact).where(
+                        Contact.entity_id == entity_id,
+                        Contact.entity_type == entity_type
                     )
                 ).all()
                 return [{
@@ -291,7 +291,7 @@ class Storage:
 
     async def create_contact(self, contact: Dict[str, Any]) -> Dict[str, Any]:
         with self.Session() as session:
-            contact_orm = ContactORM(
+            contact_instance = Contact(
                 name=contact["name"],
                 role=contact["role"],
                 email=contact.get("email"),
@@ -300,18 +300,18 @@ class Storage:
                 entity_type=contact["entity_type"],
                 created_at=datetime.utcnow()
             )
-            session.add(contact_orm)
+            session.add(contact_instance)
             session.commit()
-            session.refresh(contact_orm)
+            session.refresh(contact_instance)
             return {
-                "id": str(contact_orm.id), "name": contact["name"], "role": contact["role"],
+                "id": str(contact_instance.id), "name": contact["name"], "role": contact["role"],
                 "email": contact.get("email"), "phone": contact.get("phone"),
                 "entity_id": contact["entity_id"], "entity_type": contact["entity_type"]
             }
 
     async def delete_contact(self, contact_id: str) -> bool:
         with self.Session() as session:
-            contact = session.scalar(select(ContactORM).where(ContactORM.id == contact_id))
+            contact = session.scalar(select(Contact).where(Contact.id == contact_id))
             if not contact:
                 return False
             session.delete(contact)
@@ -322,7 +322,7 @@ class Storage:
     async def get_buying_parties(self) -> List[Dict[str, Any]]:
         with self.Session() as session:
             parties = session.scalars(
-                select(BuyingPartyORM).order_by(BuyingPartyORM.created_at.desc())
+                select(BuyingParty).order_by(BuyingParty.created_at.desc())
             ).all()
             return [{
                 "id": str(p.id), "name": p.name,
@@ -336,7 +336,7 @@ class Storage:
 
     async def get_buying_party(self, party_id: str) -> Optional[Dict[str, Any]]:
         with self.Session() as session:
-            party = session.scalar(select(BuyingPartyORM).where(BuyingPartyORM.id == party_id))
+            party = session.scalar(select(BuyingParty).where(BuyingParty.id == party_id))
             if not party:
                 return None
             return {
@@ -351,7 +351,7 @@ class Storage:
 
     async def create_buying_party(self, party: Dict[str, Any]) -> Dict[str, Any]:
         with self.Session() as session:
-            party_orm = BuyingPartyORM(
+            party_instance = BuyingParty(
                 name=party["name"],
                 target_acquisition_min=party.get("target_acquisition_min"),
                 target_acquisition_max=party.get("target_acquisition_max"),
@@ -362,17 +362,17 @@ class Storage:
                 notes=party.get("notes"),
                 created_at=datetime.utcnow()
             )
-            session.add(party_orm)
+            session.add(party_instance)
             session.commit()
-            session.refresh(party_orm)
-            return await self.get_buying_party(str(party_orm.id))
+            session.refresh(party_instance)
+            return await self.get_buying_party(str(party_instance.id))
 
     async def update_buying_party(self, party_id: str, updates: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         if not updates:
             return await self.get_buying_party(party_id)
         
         with self.Session() as session:
-            party = session.scalar(select(BuyingPartyORM).where(BuyingPartyORM.id == party_id))
+            party = session.scalar(select(BuyingParty).where(BuyingParty.id == party_id))
             if not party:
                 return None
             
@@ -404,7 +404,7 @@ class Storage:
 
     async def delete_buying_party(self, party_id: str) -> bool:
         with self.Session() as session:
-            party = session.scalar(select(BuyingPartyORM).where(BuyingPartyORM.id == party_id))
+            party = session.scalar(select(BuyingParty).where(BuyingParty.id == party_id))
             if not party:
                 return False
             session.delete(party)
@@ -413,7 +413,7 @@ class Storage:
 
     async def update_buying_party_notes(self, party_id: str, notes: str) -> Optional[Dict[str, Any]]:
         with self.Session() as session:
-            party = session.scalar(select(BuyingPartyORM).where(BuyingPartyORM.id == party_id))
+            party = session.scalar(select(BuyingParty).where(BuyingParty.id == party_id))
             if not party:
                 return None
             party.notes = notes
@@ -424,7 +424,7 @@ class Storage:
     async def get_deal_buyer_matches(self, deal_id: str) -> List[Dict[str, Any]]:
         with self.Session() as session:
             matches = session.scalars(
-                select(DealBuyerMatchORM).where(DealBuyerMatchORM.deal_id == deal_id)
+                select(DealBuyerMatch).where(DealBuyerMatch.deal_id == deal_id)
             ).all()
             return [{
                 "id": str(m.id), "deal_id": str(m.deal_id),
@@ -437,7 +437,7 @@ class Storage:
     async def get_buying_party_matches(self, party_id: str) -> List[Dict[str, Any]]:
         with self.Session() as session:
             matches = session.scalars(
-                select(DealBuyerMatchORM).where(DealBuyerMatchORM.buying_party_id == party_id)
+                select(DealBuyerMatch).where(DealBuyerMatch.buying_party_id == party_id)
             ).all()
             return [{
                 "id": str(m.id), "deal_id": str(m.deal_id),
@@ -449,7 +449,7 @@ class Storage:
 
     async def create_deal_buyer_match(self, match: Dict[str, Any]) -> Dict[str, Any]:
         with self.Session() as session:
-            match_orm = DealBuyerMatchORM(
+            match_instance = DealBuyerMatch(
                 deal_id=match["deal_id"],
                 buying_party_id=match["buying_party_id"],
                 target_acquisition=match.get("target_acquisition"),
@@ -457,18 +457,18 @@ class Storage:
                 status=match.get("status", "interested"),
                 created_at=datetime.utcnow()
             )
-            session.add(match_orm)
+            session.add(match_instance)
             session.commit()
-            session.refresh(match_orm)
+            session.refresh(match_instance)
             return {
-                "id": str(match_orm.id), "deal_id": match["deal_id"], "buying_party_id": match["buying_party_id"],
+                "id": str(match_instance.id), "deal_id": match["deal_id"], "buying_party_id": match["buying_party_id"],
                 "target_acquisition": match.get("target_acquisition"), "budget": match.get("budget"),
-                "status": match.get("status", "interested"), "created_at": match_orm.created_at
+                "status": match.get("status", "interested"), "created_at": match_instance.created_at
             }
 
     async def delete_deal_buyer_match(self, match_id: str) -> bool:
         with self.Session() as session:
-            match = session.scalar(select(DealBuyerMatchORM).where(DealBuyerMatchORM.id == match_id))
+            match = session.scalar(select(DealBuyerMatch).where(DealBuyerMatch.id == match_id))
             if not match:
                 return False
             session.delete(match)
@@ -479,7 +479,7 @@ class Storage:
     async def get_activities(self) -> List[Dict[str, Any]]:
         with self.Session() as session:
             activities = session.scalars(
-                select(ActivityORM).order_by(ActivityORM.created_at.desc())
+                select(Activity).order_by(Activity.created_at.desc())
             ).all()
             return [{
                 "id": str(a.id),
@@ -494,12 +494,12 @@ class Storage:
     async def get_activities_by_entity(self, entity_id: str) -> List[Dict[str, Any]]:
         with self.Session() as session:
             activities = session.scalars(
-                select(ActivityORM).where(
+                select(Activity).where(
                     or_(
-                        ActivityORM.deal_id == entity_id,
-                        ActivityORM.buying_party_id == entity_id
+                        Activity.deal_id == entity_id,
+                        Activity.buying_party_id == entity_id
                     )
-                ).order_by(ActivityORM.created_at.desc())
+                ).order_by(Activity.created_at.desc())
             ).all()
             return [{
                 "id": str(a.id),
@@ -513,7 +513,7 @@ class Storage:
 
     async def create_activity(self, activity: Dict[str, Any]) -> Dict[str, Any]:
         with self.Session() as session:
-            activity_orm = ActivityORM(
+            activity_instance = Activity(
                 deal_id=activity.get("deal_id"),
                 buying_party_id=activity.get("buying_party_id"),
                 type=activity["type"],
@@ -524,14 +524,14 @@ class Storage:
                 due_date=activity.get("due_date"),
                 created_at=datetime.utcnow()
             )
-            session.add(activity_orm)
+            session.add(activity_instance)
             session.commit()
-            session.refresh(activity_orm)
+            session.refresh(activity_instance)
             return {
-                "id": str(activity_orm.id), "deal_id": activity.get("deal_id"), "buying_party_id": activity.get("buying_party_id"),
+                "id": str(activity_instance.id), "deal_id": activity.get("deal_id"), "buying_party_id": activity.get("buying_party_id"),
                 "type": activity["type"], "title": activity["title"], "description": activity.get("description"),
                 "status": activity.get("status", "pending"), "assigned_to": activity.get("assigned_to"),
-                "due_date": activity.get("due_date"), "completed_at": None, "created_at": activity_orm.created_at
+                "due_date": activity.get("due_date"), "completed_at": None, "created_at": activity_instance.created_at
             }
 
     async def update_activity(self, activity_id: str, updates: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -539,7 +539,7 @@ class Storage:
             return await self._get_activity(activity_id)
         
         with self.Session() as session:
-            activity = session.scalar(select(ActivityORM).where(ActivityORM.id == activity_id))
+            activity = session.scalar(select(Activity).where(Activity.id == activity_id))
             if not activity:
                 return None
             
@@ -561,7 +561,7 @@ class Storage:
 
     async def _get_activity(self, activity_id: str) -> Optional[Dict[str, Any]]:
         with self.Session() as session:
-            activity = session.scalar(select(ActivityORM).where(ActivityORM.id == activity_id))
+            activity = session.scalar(select(Activity).where(Activity.id == activity_id))
             if not activity:
                 return None
             return {
@@ -576,7 +576,7 @@ class Storage:
 
     async def delete_activity(self, activity_id: str) -> bool:
         with self.Session() as session:
-            activity = session.scalar(select(ActivityORM).where(ActivityORM.id == activity_id))
+            activity = session.scalar(select(Activity).where(Activity.id == activity_id))
             if not activity:
                 return False
             session.delete(activity)
@@ -587,7 +587,7 @@ class Storage:
     async def get_documents(self) -> List[Dict[str, Any]]:
         with self.Session() as session:
             documents = session.scalars(
-                select(DocumentORM).order_by(DocumentORM.created_at.desc())
+                select(Document).order_by(Document.created_at.desc())
             ).all()
             return [{
                 "id": str(d.id),
@@ -600,9 +600,9 @@ class Storage:
         with self.Session() as session:
             # Documents are only linked to deals, not buying parties
             documents = session.scalars(
-                select(DocumentORM).where(
-                    DocumentORM.deal_id == entity_id
-                ).order_by(DocumentORM.created_at.desc())
+                select(Document).where(
+                    Document.deal_id == entity_id
+                ).order_by(Document.created_at.desc())
             ).all()
             return [{
                 "id": str(d.id),
@@ -613,25 +613,25 @@ class Storage:
 
     async def create_document(self, document: Dict[str, Any]) -> Dict[str, Any]:
         with self.Session() as session:
-            doc_orm = DocumentORM(
+            doc_instance = Document(
                 deal_id=document.get("deal_id"),
                 name=document["name"],
                 status=document.get("status", "draft"),
                 doc_type=document.get("doc_type"),
                 created_at=datetime.utcnow()
             )
-            session.add(doc_orm)
+            session.add(doc_instance)
             session.commit()
-            session.refresh(doc_orm)
+            session.refresh(doc_instance)
             return {
-                "id": str(doc_orm.id), "deal_id": document.get("deal_id"),
+                "id": str(doc_instance.id), "deal_id": document.get("deal_id"),
                 "name": document["name"], "status": document.get("status", "draft"),
-                "doc_type": document.get("doc_type"), "created_at": doc_orm.created_at
+                "doc_type": document.get("doc_type"), "created_at": doc_instance.created_at
             }
 
     async def delete_document(self, document_id: str) -> bool:
         with self.Session() as session:
-            document = session.scalar(select(DocumentORM).where(DocumentORM.id == document_id))
+            document = session.scalar(select(Document).where(Document.id == document_id))
             if not document:
                 return False
             session.delete(document)
@@ -642,3 +642,106 @@ class Storage:
     async def get_buyers_with_signed_nda(self, deal_id: str) -> List[Dict[str, Any]]:
         """Get buying parties that have signed NDAs - placeholder for local storage"""
         return []
+
+    # User authentication methods
+    async def get_user_by_email(self, email: str) -> Optional[Dict[str, Any]]:
+        """Get user by email"""
+        with self.Session() as session:
+            user = session.scalar(select(User).where(User.email == email).limit(1))
+            if not user:
+                return None
+            return {
+                "id": str(user.id),
+                "email": user.email,
+                "encrypted_password": user.encrypted_password,
+                "recovery_token": user.recovery_token,
+                "recovery_sent_at": user.recovery_sent_at,
+                "email_confirmed_at": user.email_confirmed_at,
+                "created_at": user.created_at,
+                "updated_at": user.updated_at
+            }
+
+    async def get_user_by_id(self, user_id: str) -> Optional[Dict[str, Any]]:
+        """Get user by ID"""
+        with self.Session() as session:
+            user = session.scalar(select(User).where(User.id == user_id).limit(1))
+            if not user:
+                return None
+            return {
+                "id": str(user.id),
+                "email": user.email,
+                "encrypted_password": user.encrypted_password,
+                "recovery_token": user.recovery_token,
+                "recovery_sent_at": user.recovery_sent_at,
+                "email_confirmed_at": user.email_confirmed_at,
+                "created_at": user.created_at,
+                "updated_at": user.updated_at
+            }
+
+    async def get_user_by_recovery_token(self, token: str) -> Optional[Dict[str, Any]]:
+        """Get user by recovery token"""
+        with self.Session() as session:
+            user = session.scalar(select(User).where(User.recovery_token == token).limit(1))
+            if not user:
+                return None
+            return {
+                "id": str(user.id),
+                "email": user.email,
+                "encrypted_password": user.encrypted_password,
+                "recovery_token": user.recovery_token,
+                "recovery_sent_at": user.recovery_sent_at,
+                "email_confirmed_at": user.email_confirmed_at,
+                "created_at": user.created_at,
+                "updated_at": user.updated_at
+            }
+
+    async def create_user(self, email: str, hashed_password: str) -> Dict[str, Any]:
+        """Create a new user"""
+        import uuid
+        with self.Session() as session:
+            user_id = str(uuid.uuid4())
+            user = User(
+                id=user_id,
+                email=email,
+                encrypted_password=hashed_password,
+                created_at=datetime.utcnow(),
+                updated_at=datetime.utcnow()
+            )
+            session.add(user)
+            session.commit()
+            session.refresh(user)
+            return {
+                "id": str(user.id),
+                "email": user.email,
+                "encrypted_password": user.encrypted_password,
+                "recovery_token": user.recovery_token,
+                "recovery_sent_at": user.recovery_sent_at,
+                "email_confirmed_at": user.email_confirmed_at,
+                "created_at": user.created_at,
+                "updated_at": user.updated_at
+            }
+
+    async def update_user_password(self, user_id: str, hashed_password: str) -> bool:
+        """Update user password"""
+        with self.Session() as session:
+            user = session.scalar(select(User).where(User.id == user_id).limit(1))
+            if not user:
+                return False
+            user.encrypted_password = hashed_password
+            user.recovery_token = None
+            user.recovery_sent_at = None
+            user.updated_at = datetime.utcnow()
+            session.commit()
+            return True
+
+    async def set_recovery_token(self, user_id: str, token: str) -> bool:
+        """Set recovery token for password reset"""
+        with self.Session() as session:
+            user = session.scalar(select(User).where(User.id == user_id).limit(1))
+            if not user:
+                return False
+            user.recovery_token = token
+            user.recovery_sent_at = datetime.utcnow()
+            user.updated_at = datetime.utcnow()
+            session.commit()
+            return True
