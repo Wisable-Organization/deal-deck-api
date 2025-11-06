@@ -14,3 +14,4 @@ sync_supabase_data.py
 MIGRATION_SUMMARY.md
 supabase_schema.sql
 */__pycache__/
+.vscode/
