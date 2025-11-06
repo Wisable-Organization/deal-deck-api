@@ -142,3 +142,17 @@ class Document(Base):
 
     deal = relationship("Deal", backref="documents")
 
+
+class User(Base):
+    __tablename__ = 'users'
+    __table_args__ = {'schema': 'auth'}
+
+    id = Column(UUID(as_uuid=False), primary_key=True)
+    email = Column(String(255), nullable=False)
+    encrypted_password = Column(String(255), nullable=False)
+    recovery_token = Column(String(255))
+    recovery_sent_at = Column(DateTime(timezone=True))
+    email_confirmed_at = Column(DateTime(timezone=True))
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+    updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
+

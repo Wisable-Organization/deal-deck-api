@@ -12,7 +12,7 @@ from sqlalchemy.pool import NullPool
 from .models import (
     Base, Company, CompanyMetric, Deal as DealORM, Contact as ContactORM,
     BuyingParty as BuyingPartyORM, DealBuyerMatch as DealBuyerMatchORM,
-    Activity as ActivityORM, Document as DocumentORM, CompanyContact
+    Activity as ActivityORM, Document as DocumentORM, CompanyContact, User as UserORM
 )
 
 
@@ -642,3 +642,106 @@ class Storage:
     async def get_buyers_with_signed_nda(self, deal_id: str) -> List[Dict[str, Any]]:
         """Get buying parties that have signed NDAs - placeholder for local storage"""
         return []
+
+    # User authentication methods
+    async def get_user_by_email(self, email: str) -> Optional[Dict[str, Any]]:
+        """Get user by email"""
+        with self.Session() as session:
+            user = session.scalar(select(UserORM).where(UserORM.email == email).limit(1))
+            if not user:
+                return None
+            return {
+                "id": str(user.id),
+                "email": user.email,
+                "encrypted_password": user.encrypted_password,
+                "recovery_token": user.recovery_token,
+                "recovery_sent_at": user.recovery_sent_at,
+                "email_confirmed_at": user.email_confirmed_at,
+                "created_at": user.created_at,
+                "updated_at": user.updated_at
+            }
+
+    async def get_user_by_id(self, user_id: str) -> Optional[Dict[str, Any]]:
+        """Get user by ID"""
+        with self.Session() as session:
+            user = session.scalar(select(UserORM).where(UserORM.id == user_id).limit(1))
+            if not user:
+                return None
+            return {
+                "id": str(user.id),
+                "email": user.email,
+                "encrypted_password": user.encrypted_password,
+                "recovery_token": user.recovery_token,
+                "recovery_sent_at": user.recovery_sent_at,
+                "email_confirmed_at": user.email_confirmed_at,
+                "created_at": user.created_at,
+                "updated_at": user.updated_at
+            }
+
+    async def get_user_by_recovery_token(self, token: str) -> Optional[Dict[str, Any]]:
+        """Get user by recovery token"""
+        with self.Session() as session:
+            user = session.scalar(select(UserORM).where(UserORM.recovery_token == token).limit(1))
+            if not user:
+                return None
+            return {
+                "id": str(user.id),
+                "email": user.email,
+                "encrypted_password": user.encrypted_password,
+                "recovery_token": user.recovery_token,
+                "recovery_sent_at": user.recovery_sent_at,
+                "email_confirmed_at": user.email_confirmed_at,
+                "created_at": user.created_at,
+                "updated_at": user.updated_at
+            }
+
+    async def create_user(self, email: str, hashed_password: str) -> Dict[str, Any]:
+        """Create a new user"""
+        import uuid
+        with self.Session() as session:
+            user_id = str(uuid.uuid4())
+            user = UserORM(
+                id=user_id,
+                email=email,
+                encrypted_password=hashed_password,
+                created_at=datetime.utcnow(),
+                updated_at=datetime.utcnow()
+            )
+            session.add(user)
+            session.commit()
+            session.refresh(user)
+            return {
+                "id": str(user.id),
+                "email": user.email,
+                "encrypted_password": user.encrypted_password,
+                "recovery_token": user.recovery_token,
+                "recovery_sent_at": user.recovery_sent_at,
+                "email_confirmed_at": user.email_confirmed_at,
+                "created_at": user.created_at,
+                "updated_at": user.updated_at
+            }
+
+    async def update_user_password(self, user_id: str, hashed_password: str) -> bool:
+        """Update user password"""
+        with self.Session() as session:
+            user = session.scalar(select(UserORM).where(UserORM.id == user_id).limit(1))
+            if not user:
+                return False
+            user.encrypted_password = hashed_password
+            user.recovery_token = None
+            user.recovery_sent_at = None
+            user.updated_at = datetime.utcnow()
+            session.commit()
+            return True
+
+    async def set_recovery_token(self, user_id: str, token: str) -> bool:
+        """Set recovery token for password reset"""
+        with self.Session() as session:
+            user = session.scalar(select(UserORM).where(UserORM.id == user_id).limit(1))
+            if not user:
+                return False
+            user.recovery_token = token
+            user.recovery_sent_at = datetime.utcnow()
+            user.updated_at = datetime.utcnow()
+            session.commit()
+            return True

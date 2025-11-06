@@ -4,6 +4,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from .routes import router
+from .auth_routes import router as auth_router
 
 
 def create_app() -> FastAPI:
@@ -17,7 +18,10 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    # Include API routes first
+    # Include auth routes first
+    app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
+    
+    # Include API routes
     app.include_router(router, prefix="/api")
 
     return app
