@@ -3,8 +3,8 @@ import httpx
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
-from .routes import router
-from .routes.auth import router as auth_router
+from api.routes import router
+from api.routes.auth import router as auth_router
 
 
 def create_app() -> FastAPI:

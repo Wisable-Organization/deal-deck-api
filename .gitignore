@@ -13,4 +13,4 @@ import_deals_from_supabase.py
 sync_supabase_data.py
 MIGRATION_SUMMARY.md
 supabase_schema.sql
-api/__pycache__/
+*/__pycache__/

@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 import os
 import re
 
-from .auth import (
+from api.auth import (
     verify_password,
     get_password_hash,
     create_access_token,
@@ -22,11 +22,11 @@ from .auth import (
 def get_storage():
     """Get storage instance"""
     try:
-        from .storage import Storage
+        from api.storage import Storage
         storage = Storage()
         return storage
     except Exception:
-        from .memory_storage import MemoryStorage
+        from api.memory_storage import MemoryStorage
         return MemoryStorage()
 
 storage = get_storage()

@@ -7,7 +7,7 @@ from marshmallow import fields, validate, ValidationError
 from marshmallow_sqlalchemy import SQLAlchemySchema, auto_field
 from typing import Optional
 from datetime import datetime
-from .models import (
+from api.models import (
     Base, Company, CompanyMetric, Deal, Contact, CompanyContact,
     BuyingParty, DealBuyerMatch, Activity, Document
 )

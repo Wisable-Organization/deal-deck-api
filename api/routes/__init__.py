@@ -7,7 +7,7 @@ from sqlalchemy.orm import sessionmaker
 from marshmallow import ValidationError
 
 # Import marshmallow schemas
-from .schemas import (
+from api.schemas import (
     DealResponseSchema, DealCreateSchema, DealUpdateSchema, NotesUpdateSchema,
     ContactResponseSchema, ContactCreateSchema,
     BuyingPartyResponseSchema, BuyingPartyCreateSchema, BuyingPartyUpdateSchema,
@@ -25,14 +25,14 @@ def get_storage():
     """Get storage instance with proper initialization"""
     # Try local PostgreSQL
     try:
-        from .storage import Storage
+        from api.storage import Storage
         storage = Storage()
         print("🗄️  Using local PostgreSQL storage")
         return storage
     except Exception as e:
         print(f"⚠️  Local PostgreSQL failed: {e}")
         print("💾 Falling back to in-memory storage")
-        from .memory_storage import MemoryStorage
+        from api.memory_storage import MemoryStorage
         return MemoryStorage()
 
 # Initialize storage
