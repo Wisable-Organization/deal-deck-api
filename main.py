@@ -17,7 +17,7 @@ def start_fastapi():
     print("🚀 Starting FastAPI backend on port 8000...")
     try:
         subprocess.run([
-            "uvicorn", "api.main:app", 
+            "poetry", "run", "uvicorn", "api.main:app", 
             "--host", "0.0.0.0", 
             "--port", "8000",
             "--reload"

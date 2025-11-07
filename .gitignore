@@ -4,6 +4,8 @@ server/public
 *.tar.gz
 .git.backup.*
 .venv
+venv/
+env/
 .env
 auth_users_ddl.sql
 formatted_insert.sql
@@ -15,3 +17,6 @@ MIGRATION_SUMMARY.md
 supabase_schema.sql
 */__pycache__/
 .vscode/
+
+.venv/
+api/routes/__pycache__/
