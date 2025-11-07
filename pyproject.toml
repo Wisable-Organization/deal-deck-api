@@ -1,0 +1,30 @@
+[tool.poetry]
+name = "deal-deck-api"
+version = "0.1.0"
+description = "DealDash API - FastAPI backend for deal management CRM"
+authors = ["Your Name <your.email@example.com>"]
+readme = "README.md"
+packages = [{include = "api"}]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+fastapi = "0.115.0"
+uvicorn = {extras = ["standard"], version = "0.30.6"}
+supabase = "2.22.0"
+python-dotenv = "1.0.0"
+sqlalchemy = ">=2.0.36"
+psycopg2-binary = ">=2.9.0"
+marshmallow = ">=3.20.0"
+python-jose = {extras = ["cryptography"], version = "3.3.0"}
+passlib = {extras = ["argon2"], version = "1.7.4"}
+
+[tool.poetry.group.dev.dependencies]
+# Add development dependencies here if needed
+# pytest = "^7.0.0"
+# black = "^23.0.0"
+# flake8 = "^6.0.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
