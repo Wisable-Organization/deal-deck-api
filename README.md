@@ -18,7 +18,7 @@ The frontend is implemented in React + Tailwind with React Router v6 for navigat
 - `Schema.csv` — High-level CSV of intended tables and columns
 - `design_guidelines.md` — UI/UX notes
 - `main.py` — Combined entry point for Replit deployment
-- `requirements.txt` — Python dependencies for FastAPI backend
+- `pyproject.toml` — Poetry configuration and Python dependencies for FastAPI backend
 
 #### Deal Detail (highly detailed)
 The Deal Detail route `/deals/:id` renders a HubSpot-style view with:
@@ -195,14 +195,21 @@ We will port a similar seed routine to FastAPI for dev environments using Alembi
 
 **Option 1: Combined (Recommended for Replit)**
 ```bash
-# Install Python dependencies
-pip install -r requirements.txt
+# Install Poetry if you haven't already
+# curl -sSL https://install.python-poetry.org | python3 -
+
+# Install Python dependencies using Poetry
+poetry install
+
+# Activate Poetry virtual environment (or use: poetry run python main.py)
+poetry shell
 
 # Install Node dependencies
 npm install
 
 # Start both FastAPI backend and Vite frontend
 python main.py
+# Or run without activating shell: poetry run python main.py
 ```
 - Backend API: http://localhost:8000
 - Frontend UI: http://localhost:5173
@@ -211,8 +218,8 @@ python main.py
 **Option 2: Separate Processes**
 ```bash
 # Terminal 1: Start FastAPI backend
-npm run api
-# or: uvicorn api.main:app --reload --host 127.0.0.1 --port 8000
+poetry run uvicorn api.main:app --reload --host 127.0.0.1 --port 8000
+# or: npm run api (if configured)
 
 # Terminal 2: Start Vite frontend
 npm run dev
