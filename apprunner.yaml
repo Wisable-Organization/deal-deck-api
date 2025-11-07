@@ -34,5 +34,6 @@ run:
       value-from: "arn:aws:secretsmanager:us-east-2:442707283978:secret:deal-deck-api/database-url"
     - name: SUPABASE_DATABASE_URL
       value-from: "arn:aws:secretsmanager:us-east-2:442707283978:secret:deal-deck-api/supabase-database-url"
+  env:
     - name: USE_SUPABASE
       value: "true"
