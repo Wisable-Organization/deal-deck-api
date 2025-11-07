@@ -2,8 +2,7 @@
 name = "deal-deck-api"
 version = "0.1.0"
 description = "DealDash API - FastAPI backend for deal management CRM"
-authors = ["Your Name <your.email@example.com>"]
-readme = "README.md"
+authors = ["Wisable <dev@wisable.com>"]
 packages = [{include = "api"}]
 
 [tool.poetry.dependencies]
