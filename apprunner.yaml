@@ -23,3 +23,16 @@ run:
   command: poetry run uvicorn api.main:app --host 0.0.0.0 --port 8000
   network:
     port: 8000
+  env:
+    - name: SUPABASE_URL
+      value-from: "arn:aws:secretsmanager:us-east-2:442707283978:secret:deal-deck-api/supabase-url"
+    - name: SUPABASE_ANON_KEY
+      value-from: "arn:aws:secretsmanager:us-east-2:442707283978:secret:deal-deck-api/supabase-anon-key"
+    - name: SUPABASE_SERVICE_ROLE_KEY
+      value-from: "arn:aws:secretsmanager:us-east-2:442707283978:secret:deal-deck-api/supabase-service-role-key"
+    - name: DATABASE_URL
+      value-from: "arn:aws:secretsmanager:us-east-2:442707283978:secret:deal-deck-api/database-url"
+    - name: SUPABASE_DATABASE_URL
+      value-from: "arn:aws:secretsmanager:us-east-2:442707283978:secret:deal-deck-api/supabase-database-url"
+    - name: USE_SUPABASE
+      value: "true"
