@@ -20,8 +20,6 @@ run:
     - echo "[build] Installing app deps"
     - poetry install --no-root --no-ansi
     - echo "[build] App deps installed"
-  command: poetry run uvicorn api.main:app --host 0.0.0.0 --port ${PORT:-8000}
+  command: poetry run uvicorn api.main:app --host 0.0.0.0 --port 8000
   network:
     port: 8000
-    env: PORT
-
