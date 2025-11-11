@@ -21,12 +21,12 @@ class Storage:
 
     def __init__(self):
         # Get connection string from environment or use default local connection
-        use_supabase = os.getenv("USE_SUPABASE", "false") == "true"
+        use_supabase = os.getenv("USE_SUPABASE", "false") == "true" or os.getenv("USE_SUPABASE", False) == True
         db_url = os.getenv("DATABASE_URL") if not use_supabase else os.getenv("SUPABASE_DATABASE_URL")
         self.engine = create_engine(db_url, poolclass=NullPool)
         self.Session = sessionmaker(bind=self.engine)
         db_type = "Supabase" if use_supabase else "local PostgreSQL"
-        print("🗄️  Connected to:" + db_type + "USE_SUPABASE:" + use_supabase)
+        print("🗄️  Connected to:" + db_type + "USE_SUPABASE:" + str(use_supabase))
 
     def _get_company_id(self, company_name: str):
         """Get or create a company and return its ID"""
