@@ -2,6 +2,7 @@ from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, HTTPException, Query, Body
 from datetime import datetime
 import os
+import traceback
 from dotenv import load_dotenv
 from sqlalchemy.orm import sessionmaker
 from marshmallow import ValidationError
@@ -31,7 +32,8 @@ def get_storage():
         return storage
     except Exception as e:
         print(f"⚠️  Local PostgreSQL failed: {e}")
-        print("💾 Falling back to in-memory storage")
+        traceback.print_exc()  # Print full traceback to stderr
+        print("💾 Falling back to in-memory storage")   
         from api.memory_storage import MemoryStorage
         return MemoryStorage()
 

@@ -28,6 +28,7 @@ class Storage:
         self.engine = create_engine(db_url, poolclass=NullPool)
         self.Session = sessionmaker(bind=self.engine)
         print(f"🗄️  Connected to {"Supabase" if use_supabase else "local PostgreSQL"}: deal-deck")
+        
     def _get_company_id(self, company_name: str):
         """Get or create a company and return its ID"""
         with self.Session() as session:

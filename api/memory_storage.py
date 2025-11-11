@@ -6,6 +6,15 @@ from typing import List, Optional, Dict, Any
 from uuid import uuid4
 from datetime import datetime
 
+# Import password hashing function
+try:
+    from api.auth import get_password_hash
+except ImportError:
+    # Fallback if auth module not available
+    def get_password_hash(password: str) -> str:
+        # Simple fallback - in production this should use proper hashing
+        return f"hashed_{password}"
+
 class MemoryStorage:
     """In-memory storage implementation"""
     
@@ -21,6 +30,11 @@ class MemoryStorage:
     
     def _seed_data(self):
         """Seed with sample data"""
+        # Seed users first (if not already seeded)
+        if not self.users:
+            self._seed_users()
+        
+        # Only seed other data if deals don't exist
         if self.deals:
             return
             
@@ -113,6 +127,49 @@ class MemoryStorage:
             "status": "signed",
             "doc_type": None,
             "created_at": datetime.utcnow(),
+        }
+    
+    def _seed_users(self):
+        """Seed sample users for testing"""
+        now = datetime.utcnow()
+        
+        # User 1: Admin user
+        user1_id = str(uuid4())
+        self.users[user1_id] = {
+            "id": user1_id,
+            "email": "admin@dealdeck.com",
+            "encrypted_password": get_password_hash("admin123"),
+            "recovery_token": None,
+            "recovery_sent_at": None,
+            "email_confirmed_at": now,
+            "created_at": now,
+            "updated_at": now
+        }
+        
+        # User 2: Regular user
+        user2_id = str(uuid4())
+        self.users[user2_id] = {
+            "id": user2_id,
+            "email": "jennifer.walsh@dealdeck.com",
+            "encrypted_password": get_password_hash("password123"),
+            "recovery_token": None,
+            "recovery_sent_at": None,
+            "email_confirmed_at": now,
+            "created_at": now,
+            "updated_at": now
+        }
+        
+        # User 3: Test user
+        user3_id = str(uuid4())
+        self.users[user3_id] = {
+            "id": user3_id,
+            "email": "test@dealdeck.com",
+            "encrypted_password": get_password_hash("test123"),
+            "recovery_token": None,
+            "recovery_sent_at": None,
+            "email_confirmed_at": None,  # Not confirmed yet
+            "created_at": now,
+            "updated_at": now
         }
     
     # Deals
