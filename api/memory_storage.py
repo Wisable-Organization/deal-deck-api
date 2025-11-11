@@ -16,6 +16,7 @@ class MemoryStorage:
         self.matches = {}
         self.activities = {}
         self.documents = {}
+        self.users = {}
         self._seed_data()
     
     def _seed_data(self):
@@ -279,6 +280,65 @@ class MemoryStorage:
     async def get_buyers_with_signed_nda(self, deal_id: str) -> List[Dict[str, Any]]:
         """Get buying parties that have signed NDAs - not supported in memory storage"""
         return []
+
+    # User authentication methods
+    async def get_user_by_email(self, email: str) -> Optional[Dict[str, Any]]:
+        """Get user by email"""
+        for user in self.users.values():
+            if user.get("email") == email:
+                return user
+        return None
+
+    async def get_user_by_id(self, user_id: str) -> Optional[Dict[str, Any]]:
+        """Get user by ID"""
+        return self.users.get(user_id)
+
+    async def get_user_by_recovery_token(self, token: str) -> Optional[Dict[str, Any]]:
+        """Get user by recovery token"""
+        for user in self.users.values():
+            if user.get("recovery_token") == token:
+                return user
+        return None
+
+    async def create_user(self, email: str, hashed_password: str) -> Dict[str, Any]:
+        """Create a new user"""
+        user_id = str(uuid4())
+        now = datetime.utcnow()
+        user = {
+            "id": user_id,
+            "email": email,
+            "encrypted_password": hashed_password,
+            "recovery_token": None,
+            "recovery_sent_at": None,
+            "email_confirmed_at": None,
+            "created_at": now,
+            "updated_at": now
+        }
+        self.users[user_id] = user
+        return user
+
+    async def update_user_password(self, user_id: str, hashed_password: str) -> bool:
+        """Update user password"""
+        if user_id not in self.users:
+            return False
+        user = self.users[user_id].copy()
+        user["encrypted_password"] = hashed_password
+        user["recovery_token"] = None
+        user["recovery_sent_at"] = None
+        user["updated_at"] = datetime.utcnow()
+        self.users[user_id] = user
+        return True
+
+    async def set_recovery_token(self, user_id: str, token: str) -> bool:
+        """Set recovery token for password reset"""
+        if user_id not in self.users:
+            return False
+        user = self.users[user_id].copy()
+        user["recovery_token"] = token
+        user["recovery_sent_at"] = datetime.utcnow()
+        user["updated_at"] = datetime.utcnow()
+        self.users[user_id] = user
+        return True
 
 # Create storage instance
 storage = MemoryStorage()
