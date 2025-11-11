@@ -22,6 +22,8 @@ class Storage:
     def __init__(self):
         # Get connection string from environment or use default local connection
         use_supabase = os.getenv("USE_SUPABASE", "false") == "true"
+        print(f"USE_SUPABASE: {os.getenv('USE_SUPABASE', 'not caught')}")
+        print(f"DATABASE_URL: {os.getenv('DATABASE_URL', 'not caught')}")
         db_url = os.getenv("DATABASE_URL") if not use_supabase else os.getenv("SUPABASE_DATABASE_URL")
         self.engine = create_engine(db_url, poolclass=NullPool)
         self.Session = sessionmaker(bind=self.engine)
