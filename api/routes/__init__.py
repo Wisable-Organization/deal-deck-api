@@ -10,7 +10,7 @@ from marshmallow import ValidationError
 # Import marshmallow schemas
 from api.schemas import (
     DealResponseSchema, DealCreateSchema, DealUpdateSchema, NotesUpdateSchema,
-    ContactResponseSchema, ContactCreateSchema,
+    ContactResponseSchema, ContactCreateSchema, PartyContactCreateSchema,
     BuyingPartyResponseSchema, BuyingPartyCreateSchema, BuyingPartyUpdateSchema,
     DealBuyerMatchResponseSchema, MatchCreateSchema,
     ActivityResponseSchema, ActivityCreateSchema, ActivityUpdateSchema,
@@ -135,7 +135,11 @@ async def deal_buyers_with_signed_nda(deal_id: str):
 
 # Contacts
 @router.get("/contacts")
-async def list_contacts(entity_id: Optional[str] = Query(None), entity_type: Optional[str] = Query(None)):
+async def list_contacts(
+    entity_id: Optional[str] = Query(None, alias="entityId"),
+    entity_type: Optional[str] = Query(None, alias="entityType")
+):
+    # Handle both snake_case and camelCase query parameters
     if entity_id and entity_type:
         contacts = await storage.get_contacts_by_entity(entity_id, entity_type)
     else:
@@ -143,14 +147,20 @@ async def list_contacts(entity_id: Optional[str] = Query(None), entity_type: Opt
     return [ContactResponseSchema().dump(contact) for contact in contacts]
 
 
-@router.post("/contacts", status_code=201)
-async def create_contact(payload: Dict[str, Any] = Body(...)):
+@router.post("/buying-parties/{party_id}/contacts", status_code=201)
+async def create_party_contact(party_id: str, payload: Dict[str, Any] = Body(...)):
     try:
-        validated = ContactCreateSchema().load(payload)
+        # Convert camelCase to snake_case for schema validation
+        validated_data = {
+            "buying_party_id": party_id,
+            "contact_id": payload.get("contactId") or payload.get("contact_id"),
+            "role": payload.get("role")
+        }
+        validated = PartyContactCreateSchema().load(validated_data)
     except ValidationError as e:
         raise HTTPException(status_code=422, detail=e.messages)
-    contact = await storage.create_contact(validated)
-    return ContactResponseSchema().dump(contact)
+    contact = await storage.create_party_contact(validated)
+    return ContactResponseSchema().dump(contact)   
 
 
 @router.delete("/contacts/{contact_id}", status_code=204)

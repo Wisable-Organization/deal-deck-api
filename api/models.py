@@ -6,7 +6,7 @@ from sqlalchemy import Column, String, Integer, Numeric, Text, DateTime, Foreign
 from sqlalchemy.orm import declarative_base, relationship
 from sqlalchemy.dialects.postgresql import UUID
 from datetime import datetime
-
+import uuid
 Base = declarative_base()
 
 
@@ -64,8 +64,6 @@ class Contact(Base):
     role = Column(Text, nullable=False)
     email = Column(Text)
     phone = Column(Text)
-    entity_id = Column(UUID(as_uuid=False), nullable=False)
-    entity_type = Column(Text, nullable=False)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
 
 
@@ -81,10 +79,23 @@ class CompanyContact(Base):
     company = relationship("Company", backref="company_contacts")
 
 
+class PartyContact(Base):
+    __tablename__ = 'party_contacts'
+
+    id = Column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid.uuid4()))
+    buying_party_id = Column(UUID(as_uuid=False), ForeignKey('buying_parties.id', ondelete='CASCADE'), nullable=False)
+    contact_id = Column(UUID(as_uuid=False), ForeignKey('contacts.id'), nullable=False)
+    role = Column(Text)
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+
+    contact = relationship("Contact", backref="party_contacts")
+    buying_party = relationship("BuyingParty", backref="party_contacts")
+
+
 class BuyingParty(Base):
     __tablename__ = 'buying_parties'
 
-    id = Column(UUID(as_uuid=False), primary_key=True)
+    id = Column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid.uuid4()))
     name = Column(Text, nullable=False)
     target_acquisition_min = Column(Integer)
     target_acquisition_max = Column(Integer)
@@ -99,9 +110,9 @@ class BuyingParty(Base):
 class DealBuyerMatch(Base):
     __tablename__ = 'deal_buyer_matches'
 
-    id = Column(UUID(as_uuid=False), primary_key=True)
+    id = Column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid.uuid4()))
     deal_id = Column(UUID(as_uuid=False), ForeignKey('deals.id'), nullable=False)
-    buying_party_id = Column(UUID(as_uuid=False), ForeignKey('buying_parties.id'), nullable=False)
+    buying_party_id = Column(UUID(as_uuid=False), ForeignKey('buying_parties.id', ondelete='CASCADE'), nullable=False)
     target_acquisition = Column(Integer)
     budget = Column(Numeric(15, 2))
     status = Column(Text, default='interested', nullable=False)
@@ -114,9 +125,9 @@ class DealBuyerMatch(Base):
 class Activity(Base):
     __tablename__ = 'activities'
 
-    id = Column(UUID(as_uuid=False), primary_key=True)
+    id = Column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid.uuid4()))
     deal_id = Column(UUID(as_uuid=False), ForeignKey('deals.id'))
-    buying_party_id = Column(UUID(as_uuid=False), ForeignKey('buying_parties.id'))
+    buying_party_id = Column(UUID(as_uuid=False), ForeignKey('buying_parties.id', ondelete='CASCADE'))
     type = Column(Text, nullable=False)
     title = Column(Text, nullable=False)
     description = Column(Text)
@@ -133,7 +144,7 @@ class Activity(Base):
 class Document(Base):
     __tablename__ = 'documents'
 
-    id = Column(UUID(as_uuid=False), primary_key=True)
+    id = Column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid.uuid4()))
     deal_id = Column(UUID(as_uuid=False), ForeignKey('deals.id'))
     name = Column(Text, nullable=False)
     status = Column(Text, default='draft', nullable=False)
@@ -147,7 +158,7 @@ class User(Base):
     __tablename__ = 'users'
     __table_args__ = {'schema': 'auth'}
 
-    id = Column(UUID(as_uuid=False), primary_key=True)
+    id = Column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid.uuid4()))
     email = Column(String(255), nullable=False)
     encrypted_password = Column(String(255), nullable=False)
     recovery_token = Column(String(255))
