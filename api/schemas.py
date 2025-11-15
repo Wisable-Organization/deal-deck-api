@@ -103,9 +103,8 @@ class ContactResponseSchema(BaseSchema):
     role = fields.Str(required=True)
     email = fields.Str(allow_none=True)
     phone = fields.Str(allow_none=True)
-    entity_id = fields.Str(required=True)
-    entity_type = fields.Str(required=True)
-
+    entity_id = fields.Str(allow_none=True)  # Optional, added by storage layer
+    entity_type = fields.Str(allow_none=True)  # Optional, added by storage layer
 
 class ContactCreateSchema(BaseSchema):
     """Schema for creating a Contact"""
@@ -113,9 +112,12 @@ class ContactCreateSchema(BaseSchema):
     role = fields.Str(required=True)
     email = fields.Str(allow_none=True)
     phone = fields.Str(allow_none=True)
-    entity_id = fields.Str(required=True)
-    entity_type = fields.Str(required=True)
 
+class PartyContactCreateSchema(BaseSchema):
+    """Schema for creating a PartyContact (linking a Contact to a BuyingParty)"""
+    buying_party_id = fields.Str(required=True)
+    contact_id = fields.Str(required=True)
+    role = fields.Str(allow_none=True)
 
 class BuyingPartyResponseSchema(BaseSchema):
     """Schema for BuyingParty API response"""

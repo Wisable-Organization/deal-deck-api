@@ -40,7 +40,7 @@
                 "8000"
             ],
             "jinja": true,
-            "justMyCode": false,
+            "justMyCode": true,
             "python": "/Library/Frameworks/Python.framework/Versions/3.13/bin/python3",
             "env": {
                 "PYTHONPATH": "${workspaceFolder}"
