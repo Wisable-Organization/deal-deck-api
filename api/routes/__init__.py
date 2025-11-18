@@ -15,7 +15,8 @@ from api.schemas import (
     DealBuyerMatchResponseSchema, MatchCreateSchema,
     ActivityResponseSchema, ActivityCreateSchema, ActivityUpdateSchema,
     DocumentResponseSchema, DocumentCreateSchema,
-    BuyerRowSchema, PartyMatchRowSchema, MeetingSummarySchema
+    BuyerRowSchema, PartyMatchRowSchema, MeetingSummarySchema,
+    UserResponseSchema
 )
 
 # Load environment variables
@@ -250,7 +251,7 @@ async def party_matches(party_id: str):
 
 # Activities
 @router.get("/activities")
-async def list_activities(entity_id: Optional[str] = Query(None)):
+async def list_activities(entity_id: Optional[str] = Query(None, alias="entityId")):
     if entity_id:
         activities = await storage.get_activities_by_entity(entity_id)
     else:
@@ -289,7 +290,7 @@ async def delete_activity(activity_id: str):
 
 # Documents
 @router.get("/documents")
-async def list_documents(entity_id: Optional[str] = Query(None)):
+async def list_documents(entity_id: Optional[str] = Query(None, alias="entityId")):
     if entity_id:
         documents = await storage.get_documents_by_entity(entity_id)
     else:
@@ -315,6 +316,15 @@ async def delete_document(document_id: str):
 
 
 # Matches
+@router.get("/matches/{match_id}")
+async def get_match(match_id: str):
+    """Get a single deal-buyer match by ID"""
+    match = await storage.get_deal_buyer_match(match_id)
+    if not match:
+        raise HTTPException(status_code=404, detail="Match not found")
+    return DealBuyerMatchResponseSchema().dump(match)
+
+
 @router.post("/deal-buyer-matches", status_code=201)
 async def create_match(payload: Dict[str, Any] = Body(...)):
     try:
@@ -322,6 +332,15 @@ async def create_match(payload: Dict[str, Any] = Body(...)):
     except ValidationError as e:
         raise HTTPException(status_code=422, detail=e.messages)
     match = await storage.create_deal_buyer_match(validated)
+    return DealBuyerMatchResponseSchema().dump(match)
+
+
+@router.patch("/matches/{match_id}")
+async def update_match(match_id: str, payload: Dict[str, Any] = Body(...)):
+    """Update a deal-buyer match (e.g., change stage)"""
+    match = await storage.update_deal_buyer_match(match_id, payload)
+    if not match:
+        raise HTTPException(status_code=404, detail="Match not found")
     return DealBuyerMatchResponseSchema().dump(match)
 
 
@@ -337,5 +356,12 @@ async def delete_match(match_id: str):
 async def latest_summary(deal_id: str = Query(...)):
     # For now, return None; can be wired to external integrations later
     return None
+
+
+# Users
+@router.get("/users")
+async def list_users():
+    users = await storage.get_users()
+    return [UserResponseSchema().dump(user) for user in users]
 
 

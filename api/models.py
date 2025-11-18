@@ -2,18 +2,36 @@
 SQLAlchemy ORM models for the database
 """
 
-from sqlalchemy import Column, String, Integer, Numeric, Text, DateTime, ForeignKey, Boolean
+from sqlalchemy import Column, String, Integer, Numeric, Text, DateTime, ForeignKey, Boolean, Enum
 from sqlalchemy.orm import declarative_base, relationship
 from sqlalchemy.dialects.postgresql import UUID
 from datetime import datetime
 import uuid
+import enum
+
 Base = declarative_base()
+
+
+class MatchStage(str, enum.Enum):
+    """Enum for deal-buyer match stages"""
+    NEW = "new"
+    NDA_SENT = "nda_sent"
+    NDA_SIGNED = "nda_signed"
+    CIM_SENT = "cim_sent"
+    CIM_VIEWED = "cim_viewed"
+    INTRO_CALL = "intro_call"
+    DILIGENCE = "diligence"
+    IOI = "ioi"
+    LOI = "loi"
+    UNDER_CONTRACT = "under_contract"
+    WON = "won"
+    LOST = "lost"
 
 
 class Company(Base):
     __tablename__ = 'companies'
 
-    id = Column(UUID(as_uuid=False), primary_key=True)
+    id = Column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid.uuid4()))
     name = Column(Text, nullable=False)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
 
@@ -21,7 +39,7 @@ class Company(Base):
 class CompanyMetric(Base):
     __tablename__ = 'company_metrics'
 
-    id = Column(UUID(as_uuid=False), primary_key=True)
+    id = Column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid.uuid4()))
     company_id = Column(UUID(as_uuid=False), ForeignKey('companies.id'), nullable=False)
     type = Column(Text, nullable=False)
     value = Column(Numeric(15, 2), nullable=False)
@@ -34,7 +52,7 @@ class CompanyMetric(Base):
 class Deal(Base):
     __tablename__ = 'deals'
 
-    id = Column(UUID(as_uuid=False), primary_key=True)
+    id = Column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid.uuid4()))
     company_id = Column(UUID(as_uuid=False), ForeignKey('companies.id'), nullable=False)
     stage = Column(Text, nullable=False)
     priority = Column(Text, default='medium', nullable=False)
@@ -50,21 +68,30 @@ class Deal(Base):
     touches = Column(Integer, default=0, nullable=False)
     age_in_stage = Column(Integer, default=0, nullable=False)
     health_score = Column(Integer, default=85, nullable=False)
-    owner = Column(Text, nullable=False)
+    owner_id = Column(UUID(as_uuid=False), ForeignKey('auth.users.id'), nullable=False)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
 
     company = relationship("Company", backref="deals")
+    owner = relationship("User", backref="deals")
 
 
 class Contact(Base):
     __tablename__ = 'contacts'
 
-    id = Column(UUID(as_uuid=False), primary_key=True)
+    id = Column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid.uuid4()))
     name = Column(Text, nullable=False)
     role = Column(Text, nullable=False)
     email = Column(Text)
     phone = Column(Text)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+    
+    # Relationship to BuyingParty through party_contacts
+    buying_parties = relationship(
+        "BuyingParty", 
+        secondary="party_contacts", 
+        back_populates="contacts",
+        overlaps="party_contacts"
+    )
 
 
 class CompanyContact(Base):
@@ -88,8 +115,8 @@ class PartyContact(Base):
     role = Column(Text)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
 
-    contact = relationship("Contact", backref="party_contacts")
-    buying_party = relationship("BuyingParty", backref="party_contacts")
+    contact = relationship("Contact", overlaps="buying_parties,contacts")
+    buying_party = relationship("BuyingParty", back_populates="party_contacts", overlaps="buying_parties,contacts")
 
 
 class BuyingParty(Base):
@@ -106,6 +133,34 @@ class BuyingParty(Base):
     notes = Column(Text)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
 
+    contacts = relationship(
+        "Contact", 
+        secondary="party_contacts", 
+        back_populates="buying_parties",
+        overlaps="party_contacts"
+    )
+    
+    party_contacts = relationship(
+        "PartyContact",
+        back_populates="buying_party",
+        overlaps="contacts,buying_parties"
+    )
+    
+    # Relationship to documents through document_shares
+    documents = relationship(
+        "Document",
+        secondary="document_shares",
+        back_populates="buying_parties",
+        overlaps="document_shares"
+    )
+    
+    # Explicit relationship to DocumentShare (replaces backref from DocumentShare)
+    document_shares = relationship(
+        "DocumentShare",
+        back_populates="buying_party",
+        overlaps="buying_parties,documents"
+    )
+
 
 class DealBuyerMatch(Base):
     __tablename__ = 'deal_buyer_matches'
@@ -116,6 +171,7 @@ class DealBuyerMatch(Base):
     target_acquisition = Column(Integer)
     budget = Column(Numeric(15, 2))
     status = Column(Text, default='interested', nullable=False)
+    stage = Column(Text, default='new', nullable=False)  # Use MatchStage enum values as constants
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
 
     deal = relationship("Deal", backref="buyer_matches")
@@ -152,6 +208,36 @@ class Document(Base):
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
 
     deal = relationship("Deal", backref="documents")
+    
+    # Relationship to BuyingParty through document_shares
+    buying_parties = relationship(
+        "BuyingParty",
+        secondary="document_shares",
+        back_populates="documents",
+        overlaps="document_shares"
+    )
+    
+    # Explicit relationship to DocumentShare (replaces backref from DocumentShare)
+    document_shares = relationship(
+        "DocumentShare",
+        back_populates="document",
+        overlaps="buying_parties,documents"
+    )
+
+
+class DocumentShare(Base):
+    __tablename__ = 'document_shares'
+
+    id = Column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid.uuid4()))
+    document_id = Column(UUID(as_uuid=False), ForeignKey('documents.id', ondelete='CASCADE'), nullable=False)
+    entity_id = Column(UUID(as_uuid=False), ForeignKey('buying_parties.id', ondelete='CASCADE'), name='buying_party_id', nullable=False)
+    shared_at = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    expires_at = Column(DateTime(timezone=True))
+    can_download = Column(Boolean, default=True, nullable=False)
+    notes = Column(Text)
+
+    document = relationship("Document", back_populates="document_shares", overlaps="buying_parties,documents")
+    buying_party = relationship("BuyingParty", back_populates="document_shares", overlaps="buying_parties,documents")
 
 
 class User(Base):

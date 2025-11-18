@@ -26,6 +26,15 @@ class BaseSchema(ma.Schema):
     
     def on_bind_field(self, field_name, field_obj):
         field_obj.data_key = camelcase(field_obj.data_key or field_name)
+
+
+        
+class UserResponseSchema(BaseSchema):
+    """Schema for User API response"""
+    id = fields.Str(required=True)
+    email = fields.Str(required=True)
+
+
 class DealResponseSchema(BaseSchema):
     """Schema for Deal API response (includes company_name and revenue)"""
     id = fields.Str(required=True)
@@ -45,7 +54,8 @@ class DealResponseSchema(BaseSchema):
     touches = fields.Int(required=True)
     age_in_stage = fields.Int(required=True)
     health_score = fields.Int(required=True)
-    owner = fields.Str(required=True)
+    owner_id = fields.Str(required=True)
+    owner = fields.Str(required=True)  # Owner email for display
     created_at = fields.DateTime(required=True)
 
 
@@ -55,7 +65,7 @@ class DealCreateSchema(BaseSchema):
     revenue = fields.Str(required=True)
     stage = fields.Str(required=True)
     priority = fields.Str(load_default="medium")
-    owner = fields.Str(required=True)
+    owner_id = fields.Str(required=True)
     sde = fields.Str(allow_none=True)
     valuation_min = fields.Str(allow_none=True)
     valuation_max = fields.Str(allow_none=True)
@@ -76,7 +86,7 @@ class DealUpdateSchema(BaseSchema):
     revenue = fields.Str(allow_none=True)
     stage = fields.Str(allow_none=True)
     priority = fields.Str(allow_none=True)
-    owner = fields.Str(allow_none=True)
+    owner_id = fields.Str(allow_none=True)
     sde = fields.Str(allow_none=True)
     valuation_min = fields.Str(allow_none=True)
     valuation_max = fields.Str(allow_none=True)
@@ -131,6 +141,7 @@ class BuyingPartyResponseSchema(BaseSchema):
     status = fields.Str(required=True)
     notes = fields.Str(allow_none=True)
     created_at = fields.DateTime(required=True)
+    contacts = fields.List(fields.Nested(ContactResponseSchema), allow_none=True)
 
 
 class BuyingPartyCreateSchema(BaseSchema):
@@ -165,6 +176,7 @@ class DealBuyerMatchResponseSchema(BaseSchema):
     target_acquisition = fields.Int(allow_none=True)
     budget = fields.Str(allow_none=True)
     status = fields.Str(required=True)
+    stage = fields.Str(allow_none=True)
     created_at = fields.DateTime(required=True)
 
 

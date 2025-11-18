@@ -230,7 +230,16 @@ class MemoryStorage:
     
     # Buying Parties
     async def get_buying_parties(self) -> List[Dict[str, Any]]:
-        return list(self.buying_parties.values())
+        parties = list(self.buying_parties.values())
+        # Add contacts to each party
+        for party in parties:
+            party_contacts = [
+                {k: v for k, v in c.items() if k not in ["entity_id", "entity_type"]}
+                for c in self.contacts.values()
+                if c.get("entity_id") == party["id"] and c.get("entity_type") == "buying_party"
+            ]
+            party["contacts"] = party_contacts
+        return parties
     
     async def get_buying_party(self, party_id: str) -> Optional[Dict[str, Any]]:
         return self.buying_parties.get(party_id)

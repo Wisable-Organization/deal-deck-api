@@ -13,7 +13,7 @@ from sqlalchemy.pool import NullPool
 from api.models import (
     Base, Company, CompanyMetric, Deal, Contact, CompanyContact, PartyContact,
     BuyingParty, DealBuyerMatch,
-    Activity, Document, User
+    Activity, Document, DocumentShare, User
 )
 
 logger = logging.getLogger(__name__)
@@ -77,6 +77,7 @@ class Storage:
 
     def _deal_instance_to_dict(self, deal_instance: Deal, company_name: str = None, revenue: float = None) -> Dict[str, Any]:
         """Convert  Deal object to dict"""
+        owner_email = deal_instance.owner.email if deal_instance.owner else ""
         return {
             "id": str(deal_instance.id),
             "company_name": company_name or "Unknown Company",
@@ -95,7 +96,8 @@ class Storage:
             "touches": deal_instance.touches or 0,
             "age_in_stage": deal_instance.age_in_stage or 0,
             "health_score": deal_instance.health_score or 85,
-            "owner": deal_instance.owner or "",
+            "owner_id": str(deal_instance.owner_id) if deal_instance.owner_id else "",
+            "owner": owner_email,
             "created_at": deal_instance.created_at or datetime.utcnow()
         }
 
@@ -105,7 +107,7 @@ class Storage:
             # Get deals with company and latest revenue metric
             deals = session.scalars(
                 select(Deal)
-                .options(joinedload(Deal.company))
+                .options(joinedload(Deal.company), joinedload(Deal.owner))
                 .order_by(Deal.created_at.desc())
             ).all()
             
@@ -131,7 +133,7 @@ class Storage:
         with self.Session() as session:
             deal = session.scalar(
                 select(Deal)
-                .options(joinedload(Deal.company))
+                .options(joinedload(Deal.company), joinedload(Deal.owner))
                 .where(Deal.id == deal_id)
             )
             
@@ -194,7 +196,7 @@ class Storage:
                 touches=deal.get("touches", 0),
                 age_in_stage=deal.get("age_in_stage", 0),
                 health_score=deal.get("health_score", 85),
-                owner=deal["owner"],
+                owner_id=deal["owner_id"],
                 created_at=datetime.utcnow()
             )
             session.add(deal_instance)
@@ -235,7 +237,7 @@ class Storage:
                 "touches": "touches",
                 "age_in_stage": "age_in_stage",
                 "health_score": "health_score",
-                "owner": "owner"
+                "owner_id": "owner_id"
             }
             
             for key, value in update_data.items():
@@ -404,18 +406,35 @@ class Storage:
     # Buying Parties
     async def get_buying_parties(self) -> List[Dict[str, Any]]:
         with self.Session() as session:
+            # Use joinedload to eagerly load party_contacts and their contacts
             parties = session.scalars(
-                select(BuyingParty).order_by(BuyingParty.created_at.desc())
-            ).all()
-            return [{
-                "id": str(p.id), "name": p.name,
-                "target_acquisition_min": p.target_acquisition_min,
-                "target_acquisition_max": p.target_acquisition_max,
-                "budget_min": str(p.budget_min) if p.budget_min else None,
-                "budget_max": str(p.budget_max) if p.budget_max else None,
-                "timeline": p.timeline, "status": p.status, "notes": p.notes,
-                "created_at": p.created_at
-            } for p in parties]
+                select(BuyingParty)
+                .options(joinedload(BuyingParty.party_contacts).joinedload(PartyContact.contact))
+                .order_by(BuyingParty.created_at.desc())
+            ).unique().all()
+            
+            result = []
+            for p in parties:
+                # Build contacts list from party_contacts relationship
+                contacts = [{
+                    "id": str(pc.contact.id),
+                    "name": pc.contact.name,
+                    "role": pc.contact.role,
+                    "email": pc.contact.email,
+                    "phone": pc.contact.phone
+                } for pc in p.party_contacts]
+                
+                result.append({
+                    "id": str(p.id), "name": p.name,
+                    "target_acquisition_min": p.target_acquisition_min,
+                    "target_acquisition_max": p.target_acquisition_max,
+                    "budget_min": str(p.budget_min) if p.budget_min else None,
+                    "budget_max": str(p.budget_max) if p.budget_max else None,
+                    "timeline": p.timeline, "status": p.status, "notes": p.notes,
+                    "created_at": p.created_at,
+                    "contacts": contacts
+                })
+            return result
 
     async def get_buying_party(self, party_id: str) -> Optional[Dict[str, Any]]:
         with self.Session() as session:
@@ -514,7 +533,9 @@ class Storage:
                 "buying_party_id": str(m.buying_party_id),
                 "target_acquisition": m.target_acquisition,
                 "budget": str(m.budget) if m.budget else None,
-                "status": m.status, "created_at": m.created_at
+                "status": m.status, 
+                "stage": m.stage or "new",
+                "created_at": m.created_at
             } for m in matches]
 
     async def get_buying_party_matches(self, party_id: str) -> List[Dict[str, Any]]:
@@ -527,8 +548,27 @@ class Storage:
                 "buying_party_id": str(m.buying_party_id),
                 "target_acquisition": m.target_acquisition,
                 "budget": str(m.budget) if m.budget else None,
-                "status": m.status, "created_at": m.created_at
+                "status": m.status,
+                "stage": m.stage or "new",
+                "created_at": m.created_at
             } for m in matches]
+
+    async def get_deal_buyer_match(self, match_id: str) -> Optional[Dict[str, Any]]:
+        """Get a single deal-buyer match by ID"""
+        with self.Session() as session:
+            match = session.scalar(select(DealBuyerMatch).where(DealBuyerMatch.id == match_id))
+            if not match:
+                return None
+            return {
+                "id": str(match.id),
+                "deal_id": str(match.deal_id),
+                "buying_party_id": str(match.buying_party_id),
+                "target_acquisition": match.target_acquisition,
+                "budget": str(match.budget) if match.budget else None,
+                "status": match.status,
+                "stage": match.stage or "new",
+                "created_at": match.created_at
+            }
 
     async def create_deal_buyer_match(self, match: Dict[str, Any]) -> Dict[str, Any]:
         with self.Session() as session:
@@ -547,6 +587,44 @@ class Storage:
                 "id": str(match_instance.id), "deal_id": match["deal_id"], "buying_party_id": match["buying_party_id"],
                 "target_acquisition": match.get("target_acquisition"), "budget": match.get("budget"),
                 "status": match.get("status", "interested"), "created_at": match_instance.created_at
+            }
+
+    async def update_deal_buyer_match(self, match_id: str, updates: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Update a deal-buyer match"""
+        from api.models import MatchStage
+        with self.Session() as session:
+            match = session.scalar(select(DealBuyerMatch).where(DealBuyerMatch.id == match_id))
+            if not match:
+                return None
+            
+            # Update allowed fields
+            if "stage" in updates:
+                stage_value = updates["stage"]
+                # Validate against enum values (for safety)
+                if stage_value in [s.value for s in MatchStage]:
+                    match.stage = stage_value
+                else:
+                    match.stage = "new"
+            
+            if "status" in updates:
+                match.status = updates["status"]
+            if "target_acquisition" in updates:
+                match.target_acquisition = updates["target_acquisition"]
+            if "budget" in updates:
+                match.budget = float(updates["budget"]) if updates["budget"] else None
+            
+            session.commit()
+            session.refresh(match)
+            
+            return {
+                "id": str(match.id),
+                "deal_id": str(match.deal_id),
+                "buying_party_id": str(match.buying_party_id),
+                "target_acquisition": match.target_acquisition,
+                "budget": str(match.budget) if match.budget else None,
+                "status": match.status,
+                "stage": match.stage or "new",
+                "created_at": match.created_at
             }
 
     async def delete_deal_buyer_match(self, match_id: str) -> bool:
@@ -681,18 +759,40 @@ class Storage:
 
     async def get_documents_by_entity(self, entity_id: str) -> List[Dict[str, Any]]:
         with self.Session() as session:
-            # Documents are only linked to deals, not buying parties
-            documents = session.scalars(
-                select(Document).where(
-                    Document.deal_id == entity_id
-                ).order_by(Document.created_at.desc())
-            ).all()
-            return [{
-                "id": str(d.id),
-                "deal_id": str(d.deal_id) if d.deal_id else None,
-                "name": d.name, "status": d.status,
-                "doc_type": d.doc_type, "created_at": d.created_at
-            } for d in documents]
+            # Check if this is a buying party by querying buying_parties table
+            buying_party = session.scalar(
+                select(BuyingParty).where(BuyingParty.id == entity_id)
+            )
+            
+            if buying_party:
+                # For buying parties, get documents through document_shares
+                document_shares = session.scalars(
+                    select(DocumentShare)
+                    .where(DocumentShare.entity_id == entity_id)
+                    .options(joinedload(DocumentShare.document))
+                ).all()
+                
+                return [{
+                    "id": str(ds.document.id),
+                    "deal_id": str(ds.document.deal_id) if ds.document.deal_id else None,
+                    "name": ds.document.name,
+                    "status": ds.document.status,
+                    "doc_type": ds.document.doc_type,
+                    "created_at": ds.document.created_at
+                } for ds in document_shares if ds.document]
+            else:
+                # For deals, get documents directly linked to the deal
+                documents = session.scalars(
+                    select(Document).where(
+                        Document.deal_id == entity_id
+                    ).order_by(Document.created_at.desc())
+                ).all()
+                return [{
+                    "id": str(d.id),
+                    "deal_id": str(d.deal_id) if d.deal_id else None,
+                    "name": d.name, "status": d.status,
+                    "doc_type": d.doc_type, "created_at": d.created_at
+                } for d in documents]
 
     async def create_document(self, document: Dict[str, Any]) -> Dict[str, Any]:
         with self.Session() as session:
@@ -727,6 +827,18 @@ class Storage:
         return []
 
     # User authentication methods
+    async def get_users(self) -> List[Dict[str, Any]]:
+        """Get all users"""
+        with self.Session() as session:
+            users = session.scalars(select(User).order_by(User.email)).all()
+            return [
+                {
+                    "id": str(user.id),
+                    "email": user.email
+                }
+                for user in users
+            ]
+
     async def get_user_by_email(self, email: str) -> Optional[Dict[str, Any]]:
         """Get user by email"""
         with self.Session() as session:
