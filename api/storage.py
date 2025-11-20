@@ -4,16 +4,33 @@ Connects directly to the local PostgreSQL database
 """
 
 import os
+import logging
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 from sqlalchemy import create_engine, select, func, or_
 from sqlalchemy.orm import sessionmaker, joinedload
 from sqlalchemy.pool import NullPool
 from api.models import (
-    Base, Company, CompanyMetric, Deal, Contact,
+    Base, Company, CompanyMetric, Deal, Contact, CompanyContact, PartyContact,
     BuyingParty, DealBuyerMatch,
-    Activity, Document, CompanyContact, User
+    Activity, Document, DocumentShare, User
 )
+
+logger = logging.getLogger(__name__)
+
+
+# Response classes for Marshmallow dumping
+class ContactResponse:
+    """Response object for Contact that can be dumped by Marshmallow"""
+    def __init__(self, id: str, name: str, role: str, email: str = None, phone: str = None, 
+                 entity_id: str = None, entity_type: str = None):
+        self.id = id
+        self.name = name
+        self.role = role
+        self.email = email
+        self.phone = phone
+        self.entity_id = entity_id
+        self.entity_type = entity_type
 
 
 class Storage:
@@ -23,10 +40,19 @@ class Storage:
         # Get connection string from environment or use default local connection
         use_supabase = os.getenv("USE_SUPABASE", "false") == "true" or os.getenv("USE_SUPABASE", False) == True
         db_url = os.getenv("DATABASE_URL") if not use_supabase else os.getenv("SUPABASE_DATABASE_URL")
-        self.engine = create_engine(db_url, poolclass=NullPool)
+        
+        # Enable SQL statement logging in development mode
+        environment = os.getenv("ENVIRONMENT", "production").lower()
+        is_dev = environment.startswith("dev")
+        
+        self.engine = create_engine(
+            db_url, 
+            poolclass=NullPool,
+            echo=is_dev  # Log all SQL statements when ENVIRONMENT starts with 'dev'
+        )
         self.Session = sessionmaker(bind=self.engine)
         db_type = "Supabase" if use_supabase else "local PostgreSQL"
-        print("🗄️  Connected to:" + db_type + "USE_SUPABASE:" + str(use_supabase))
+        logger.info(f"🗄️  Connected to: {db_type} (USE_SUPABASE: {use_supabase}, ENVIRONMENT: {environment})")
 
     def _get_company_id(self, company_name: str):
         """Get or create a company and return its ID"""
@@ -51,6 +77,7 @@ class Storage:
 
     def _deal_instance_to_dict(self, deal_instance: Deal, company_name: str = None, revenue: float = None) -> Dict[str, Any]:
         """Convert  Deal object to dict"""
+        owner_email = deal_instance.owner.email if deal_instance.owner else ""
         return {
             "id": str(deal_instance.id),
             "company_name": company_name or "Unknown Company",
@@ -69,7 +96,8 @@ class Storage:
             "touches": deal_instance.touches or 0,
             "age_in_stage": deal_instance.age_in_stage or 0,
             "health_score": deal_instance.health_score or 85,
-            "owner": deal_instance.owner or "",
+            "owner_id": str(deal_instance.owner_id) if deal_instance.owner_id else "",
+            "owner": owner_email,
             "created_at": deal_instance.created_at or datetime.utcnow()
         }
 
@@ -79,7 +107,7 @@ class Storage:
             # Get deals with company and latest revenue metric
             deals = session.scalars(
                 select(Deal)
-                .options(joinedload(Deal.company))
+                .options(joinedload(Deal.company), joinedload(Deal.owner))
                 .order_by(Deal.created_at.desc())
             ).all()
             
@@ -105,7 +133,7 @@ class Storage:
         with self.Session() as session:
             deal = session.scalar(
                 select(Deal)
-                .options(joinedload(Deal.company))
+                .options(joinedload(Deal.company), joinedload(Deal.owner))
                 .where(Deal.id == deal_id)
             )
             
@@ -168,7 +196,7 @@ class Storage:
                 touches=deal.get("touches", 0),
                 age_in_stage=deal.get("age_in_stage", 0),
                 health_score=deal.get("health_score", 85),
-                owner=deal["owner"],
+                owner_id=deal["owner_id"],
                 created_at=datetime.utcnow()
             )
             session.add(deal_instance)
@@ -209,7 +237,7 @@ class Storage:
                 "touches": "touches",
                 "age_in_stage": "age_in_stage",
                 "health_score": "health_score",
-                "owner": "owner"
+                "owner_id": "owner_id"
             }
             
             for key, value in update_data.items():
@@ -245,16 +273,21 @@ class Storage:
         return await self.get_deal(deal_id)
 
     # Contacts
-    async def get_contacts(self) -> List[Dict[str, Any]]:
+    async def get_contacts(self) -> List[ContactResponse]:
         with self.Session() as session:
             contacts = session.scalars(select(Contact)).all()
-            return [{
-                "id": str(c.id), "name": c.name, "role": c.role,
-                "email": c.email, "phone": c.phone,
-                "entity_id": str(c.entity_id), "entity_type": c.entity_type
-            } for c in contacts]
+            return [
+                ContactResponse(
+                    id=str(c.id),
+                    name=c.name,
+                    role=c.role,
+                    email=c.email,
+                    phone=c.phone
+                )
+                for c in contacts
+            ]
 
-    async def get_contacts_by_entity(self, entity_id: str, entity_type: str) -> List[Dict[str, Any]]:
+    async def get_contacts_by_entity(self, entity_id: str, entity_type: str) -> List[ContactResponse]:
         with self.Session() as session:
             if entity_type == "deal":
                 # Get contacts through company
@@ -273,43 +306,93 @@ class Storage:
                     .options(joinedload(CompanyContact.contact))
                 ).all()
                 
-                return [{
-                    "id": str(cc.contact.id), "name": cc.contact.name, "role": cc.contact_role,
-                    "email": cc.contact.email, "phone": cc.contact.phone,
-                    "entity_id": entity_id, "entity_type": entity_type
-                } for cc in company_contacts]
-            else:
-                contacts = session.scalars(
-                    select(Contact).where(
-                        Contact.entity_id == entity_id,
-                        Contact.entity_type == entity_type
+                return [
+                    ContactResponse(
+                        id=str(cc.contact.id),
+                        name=cc.contact.name,
+                        role=cc.contact_role or cc.contact.role,
+                        email=cc.contact.email,
+                        phone=cc.contact.phone,
+                        entity_id=entity_id,
+                        entity_type=entity_type
                     )
+                    for cc in company_contacts
+                ]
+            else:
+                # Get contacts via party_contacts for buying parties
+                party_contacts = session.scalars(
+                    select(PartyContact)
+                    .where(PartyContact.buying_party_id == entity_id)
+                    .options(joinedload(PartyContact.contact))
                 ).all()
-                return [{
-                    "id": str(c.id), "name": c.name, "role": c.role,
-                    "email": c.email, "phone": c.phone,
-                    "entity_id": entity_id, "entity_type": entity_type
-                } for c in contacts]
+                
+                return [
+                    ContactResponse(
+                        id=str(pc.contact.id),
+                        name=pc.contact.name,
+                        role=pc.role or pc.contact.role,
+                        email=pc.contact.email,
+                        phone=pc.contact.phone,
+                        entity_id=entity_id,
+                        entity_type=entity_type
+                    )
+                    for pc in party_contacts
+                ]
 
-    async def create_contact(self, contact: Dict[str, Any]) -> Dict[str, Any]:
+    async def create_party_contact(self, party_contact_data: Dict[str, Any]) -> ContactResponse:
+        import uuid
         with self.Session() as session:
-            contact_instance = Contact(
-                name=contact["name"],
-                role=contact["role"],
-                email=contact.get("email"),
-                phone=contact.get("phone"),
-                entity_id=contact["entity_id"],
-                entity_type=contact["entity_type"],
-                created_at=datetime.utcnow()
+            buying_party_id = party_contact_data["buying_party_id"]
+            contact_id = party_contact_data["contact_id"]
+            role = party_contact_data.get("role")
+            
+            # Verify contact exists
+            contact_instance = session.scalar(select(Contact).where(Contact.id == contact_id))
+            if not contact_instance:
+                raise ValueError(f"Contact with id {contact_id} not found")
+            
+            # Verify buying party exists
+            buying_party = session.scalar(select(BuyingParty).where(BuyingParty.id == buying_party_id))
+            if not buying_party:
+                raise ValueError(f"Buying party with id {buying_party_id} not found")
+            
+            # Check if link already exists
+            existing_link = session.scalar(
+                select(PartyContact).where(
+                    PartyContact.buying_party_id == buying_party_id,
+                    PartyContact.contact_id == contact_id
+                )
             )
-            session.add(contact_instance)
-            session.commit()
-            session.refresh(contact_instance)
-            return {
-                "id": str(contact_instance.id), "name": contact["name"], "role": contact["role"],
-                "email": contact.get("email"), "phone": contact.get("phone"),
-                "entity_id": contact["entity_id"], "entity_type": contact["entity_type"]
-            }
+            
+            if existing_link:
+                # Return existing contact if link already exists
+                session.refresh(contact_instance)
+                # Use the role from the existing link if available
+                final_role = existing_link.role or contact_instance.role
+            else:
+                # Create new PartyContact link
+                party_contact_id = str(uuid.uuid4())
+                party_contact = PartyContact(
+                    id=party_contact_id,
+                    buying_party_id=buying_party_id,
+                    contact_id=contact_id,
+                    role=role,
+                    created_at=datetime.utcnow()
+                )
+                session.add(party_contact)
+                session.commit()
+                session.refresh(contact_instance)
+                final_role = role or contact_instance.role
+            
+            return ContactResponse(
+                id=str(contact_instance.id),
+                name=contact_instance.name,
+                role=final_role,
+                email=contact_instance.email,
+                phone=contact_instance.phone,
+                entity_id=buying_party_id,
+                entity_type="buying_party"
+            )
 
     async def delete_contact(self, contact_id: str) -> bool:
         with self.Session() as session:
@@ -323,18 +406,35 @@ class Storage:
     # Buying Parties
     async def get_buying_parties(self) -> List[Dict[str, Any]]:
         with self.Session() as session:
+            # Use joinedload to eagerly load party_contacts and their contacts
             parties = session.scalars(
-                select(BuyingParty).order_by(BuyingParty.created_at.desc())
-            ).all()
-            return [{
-                "id": str(p.id), "name": p.name,
-                "target_acquisition_min": p.target_acquisition_min,
-                "target_acquisition_max": p.target_acquisition_max,
-                "budget_min": str(p.budget_min) if p.budget_min else None,
-                "budget_max": str(p.budget_max) if p.budget_max else None,
-                "timeline": p.timeline, "status": p.status, "notes": p.notes,
-                "created_at": p.created_at
-            } for p in parties]
+                select(BuyingParty)
+                .options(joinedload(BuyingParty.party_contacts).joinedload(PartyContact.contact))
+                .order_by(BuyingParty.created_at.desc())
+            ).unique().all()
+            
+            result = []
+            for p in parties:
+                # Build contacts list from party_contacts relationship
+                contacts = [{
+                    "id": str(pc.contact.id),
+                    "name": pc.contact.name,
+                    "role": pc.contact.role,
+                    "email": pc.contact.email,
+                    "phone": pc.contact.phone
+                } for pc in p.party_contacts]
+                
+                result.append({
+                    "id": str(p.id), "name": p.name,
+                    "target_acquisition_min": p.target_acquisition_min,
+                    "target_acquisition_max": p.target_acquisition_max,
+                    "budget_min": str(p.budget_min) if p.budget_min else None,
+                    "budget_max": str(p.budget_max) if p.budget_max else None,
+                    "timeline": p.timeline, "status": p.status, "notes": p.notes,
+                    "created_at": p.created_at,
+                    "contacts": contacts
+                })
+            return result
 
     async def get_buying_party(self, party_id: str) -> Optional[Dict[str, Any]]:
         with self.Session() as session:
@@ -433,7 +533,9 @@ class Storage:
                 "buying_party_id": str(m.buying_party_id),
                 "target_acquisition": m.target_acquisition,
                 "budget": str(m.budget) if m.budget else None,
-                "status": m.status, "created_at": m.created_at
+                "status": m.status, 
+                "stage": m.stage or "new",
+                "created_at": m.created_at
             } for m in matches]
 
     async def get_buying_party_matches(self, party_id: str) -> List[Dict[str, Any]]:
@@ -446,8 +548,27 @@ class Storage:
                 "buying_party_id": str(m.buying_party_id),
                 "target_acquisition": m.target_acquisition,
                 "budget": str(m.budget) if m.budget else None,
-                "status": m.status, "created_at": m.created_at
+                "status": m.status,
+                "stage": m.stage or "new",
+                "created_at": m.created_at
             } for m in matches]
+
+    async def get_deal_buyer_match(self, match_id: str) -> Optional[Dict[str, Any]]:
+        """Get a single deal-buyer match by ID"""
+        with self.Session() as session:
+            match = session.scalar(select(DealBuyerMatch).where(DealBuyerMatch.id == match_id))
+            if not match:
+                return None
+            return {
+                "id": str(match.id),
+                "deal_id": str(match.deal_id),
+                "buying_party_id": str(match.buying_party_id),
+                "target_acquisition": match.target_acquisition,
+                "budget": str(match.budget) if match.budget else None,
+                "status": match.status,
+                "stage": match.stage or "new",
+                "created_at": match.created_at
+            }
 
     async def create_deal_buyer_match(self, match: Dict[str, Any]) -> Dict[str, Any]:
         with self.Session() as session:
@@ -466,6 +587,44 @@ class Storage:
                 "id": str(match_instance.id), "deal_id": match["deal_id"], "buying_party_id": match["buying_party_id"],
                 "target_acquisition": match.get("target_acquisition"), "budget": match.get("budget"),
                 "status": match.get("status", "interested"), "created_at": match_instance.created_at
+            }
+
+    async def update_deal_buyer_match(self, match_id: str, updates: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Update a deal-buyer match"""
+        from api.models import MatchStage
+        with self.Session() as session:
+            match = session.scalar(select(DealBuyerMatch).where(DealBuyerMatch.id == match_id))
+            if not match:
+                return None
+            
+            # Update allowed fields
+            if "stage" in updates:
+                stage_value = updates["stage"]
+                # Validate against enum values (for safety)
+                if stage_value in [s.value for s in MatchStage]:
+                    match.stage = stage_value
+                else:
+                    match.stage = "new"
+            
+            if "status" in updates:
+                match.status = updates["status"]
+            if "target_acquisition" in updates:
+                match.target_acquisition = updates["target_acquisition"]
+            if "budget" in updates:
+                match.budget = float(updates["budget"]) if updates["budget"] else None
+            
+            session.commit()
+            session.refresh(match)
+            
+            return {
+                "id": str(match.id),
+                "deal_id": str(match.deal_id),
+                "buying_party_id": str(match.buying_party_id),
+                "target_acquisition": match.target_acquisition,
+                "budget": str(match.budget) if match.budget else None,
+                "status": match.status,
+                "stage": match.stage or "new",
+                "created_at": match.created_at
             }
 
     async def delete_deal_buyer_match(self, match_id: str) -> bool:
@@ -600,18 +759,40 @@ class Storage:
 
     async def get_documents_by_entity(self, entity_id: str) -> List[Dict[str, Any]]:
         with self.Session() as session:
-            # Documents are only linked to deals, not buying parties
-            documents = session.scalars(
-                select(Document).where(
-                    Document.deal_id == entity_id
-                ).order_by(Document.created_at.desc())
-            ).all()
-            return [{
-                "id": str(d.id),
-                "deal_id": str(d.deal_id) if d.deal_id else None,
-                "name": d.name, "status": d.status,
-                "doc_type": d.doc_type, "created_at": d.created_at
-            } for d in documents]
+            # Check if this is a buying party by querying buying_parties table
+            buying_party = session.scalar(
+                select(BuyingParty).where(BuyingParty.id == entity_id)
+            )
+            
+            if buying_party:
+                # For buying parties, get documents through document_shares
+                document_shares = session.scalars(
+                    select(DocumentShare)
+                    .where(DocumentShare.entity_id == entity_id)
+                    .options(joinedload(DocumentShare.document))
+                ).all()
+                
+                return [{
+                    "id": str(ds.document.id),
+                    "deal_id": str(ds.document.deal_id) if ds.document.deal_id else None,
+                    "name": ds.document.name,
+                    "status": ds.document.status,
+                    "doc_type": ds.document.doc_type,
+                    "created_at": ds.document.created_at
+                } for ds in document_shares if ds.document]
+            else:
+                # For deals, get documents directly linked to the deal
+                documents = session.scalars(
+                    select(Document).where(
+                        Document.deal_id == entity_id
+                    ).order_by(Document.created_at.desc())
+                ).all()
+                return [{
+                    "id": str(d.id),
+                    "deal_id": str(d.deal_id) if d.deal_id else None,
+                    "name": d.name, "status": d.status,
+                    "doc_type": d.doc_type, "created_at": d.created_at
+                } for d in documents]
 
     async def create_document(self, document: Dict[str, Any]) -> Dict[str, Any]:
         with self.Session() as session:
@@ -646,6 +827,18 @@ class Storage:
         return []
 
     # User authentication methods
+    async def get_users(self) -> List[Dict[str, Any]]:
+        """Get all users"""
+        with self.Session() as session:
+            users = session.scalars(select(User).order_by(User.email)).all()
+            return [
+                {
+                    "id": str(user.id),
+                    "email": user.email
+                }
+                for user in users
+            ]
+
     async def get_user_by_email(self, email: str) -> Optional[Dict[str, Any]]:
         """Get user by email"""
         with self.Session() as session:
