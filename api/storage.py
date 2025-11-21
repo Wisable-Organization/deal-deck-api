@@ -598,9 +598,12 @@ class Storage:
                 return None
             
             # Update allowed fields
-            if "stage" in updates:
+            if "stages" in updates:
+                # Store comma-separated stages directly without validation
+                match.stage = updates["stages"]
+            elif "stage" in updates:
                 stage_value = updates["stage"]
-                # Validate against enum values (for safety)
+                # Validate against enum values (for safety) - legacy support
                 if stage_value in [s.value for s in MatchStage]:
                     match.stage = stage_value
                 else:

@@ -1,0 +1,27 @@
+{
+  "include": [
+    "api",
+    "*.py"
+  ],
+  "exclude": [
+    "**/__pycache__",
+    "**/.venv",
+    "**/node_modules"
+  ],
+  "venvPath": ".",
+  "venv": ".venv",
+  "reportMissingImports": true,
+  "reportMissingTypeStubs": false,
+  "pythonVersion": "3.10",
+  "pythonPlatform": "Darwin",
+  "executionEnvironments": [
+    {
+      "root": "."
+    }
+  ]
+}
+
+
+
+
+
