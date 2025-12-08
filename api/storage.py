@@ -578,6 +578,7 @@ class Storage:
                 target_acquisition=match.get("target_acquisition"),
                 budget=float(match["budget"]) if match.get("budget") else None,
                 status=match.get("status", "interested"),
+                stage=match.get("stage", "new"),
                 created_at=datetime.utcnow()
             )
             session.add(match_instance)
@@ -586,7 +587,7 @@ class Storage:
             return {
                 "id": str(match_instance.id), "deal_id": match["deal_id"], "buying_party_id": match["buying_party_id"],
                 "target_acquisition": match.get("target_acquisition"), "budget": match.get("budget"),
-                "status": match.get("status", "interested"), "created_at": match_instance.created_at
+                "status": match.get("status", "interested"), "stage": match.get("stage", "new"), "created_at": match_instance.created_at
             }
 
     async def update_deal_buyer_match(self, match_id: str, updates: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -598,9 +599,12 @@ class Storage:
                 return None
             
             # Update allowed fields
-            if "stage" in updates:
+            if "stages" in updates:
+                # Store comma-separated stages directly without validation
+                match.stage = updates["stages"]
+            elif "stage" in updates:
                 stage_value = updates["stage"]
-                # Validate against enum values (for safety)
+                # Validate against enum values (for safety) - legacy support
                 if stage_value in [s.value for s in MatchStage]:
                     match.stage = stage_value
                 else:
@@ -646,6 +650,7 @@ class Storage:
                 "id": str(a.id),
                 "deal_id": str(a.deal_id) if a.deal_id else None,
                 "buying_party_id": str(a.buying_party_id) if a.buying_party_id else None,
+                "parent_activity_id": str(a.parent_activity_id) if a.parent_activity_id else None,
                 "type": a.type, "title": a.title, "description": a.description,
                 "status": a.status, "assigned_to": a.assigned_to,
                 "due_date": a.due_date, "completed_at": a.completed_at,
@@ -666,6 +671,7 @@ class Storage:
                 "id": str(a.id),
                 "deal_id": str(a.deal_id) if a.deal_id else None,
                 "buying_party_id": str(a.buying_party_id) if a.buying_party_id else None,
+                "parent_activity_id": str(a.parent_activity_id) if a.parent_activity_id else None,
                 "type": a.type, "title": a.title, "description": a.description,
                 "status": a.status, "assigned_to": a.assigned_to,
                 "due_date": a.due_date, "completed_at": a.completed_at,
@@ -674,9 +680,17 @@ class Storage:
 
     async def create_activity(self, activity: Dict[str, Any]) -> Dict[str, Any]:
         with self.Session() as session:
+            # Validate parent_activity_id if provided
+            parent_activity_id = activity.get("parent_activity_id")
+            if parent_activity_id:
+                parent_activity = session.scalar(select(Activity).where(Activity.id == parent_activity_id))
+                if not parent_activity:
+                    raise ValueError(f"Parent activity with id {parent_activity_id} not found")
+            
             activity_instance = Activity(
                 deal_id=activity.get("deal_id"),
                 buying_party_id=activity.get("buying_party_id"),
+                parent_activity_id=parent_activity_id,
                 type=activity["type"],
                 title=activity["title"],
                 description=activity.get("description"),
@@ -689,10 +703,18 @@ class Storage:
             session.commit()
             session.refresh(activity_instance)
             return {
-                "id": str(activity_instance.id), "deal_id": activity.get("deal_id"), "buying_party_id": activity.get("buying_party_id"),
-                "type": activity["type"], "title": activity["title"], "description": activity.get("description"),
-                "status": activity.get("status", "pending"), "assigned_to": activity.get("assigned_to"),
-                "due_date": activity.get("due_date"), "completed_at": None, "created_at": activity_instance.created_at
+                "id": str(activity_instance.id), 
+                "deal_id": activity.get("deal_id"), 
+                "buying_party_id": activity.get("buying_party_id"),
+                "parent_activity_id": str(parent_activity_id) if parent_activity_id else None,
+                "type": activity["type"], 
+                "title": activity["title"], 
+                "description": activity.get("description"),
+                "status": activity.get("status", "pending"), 
+                "assigned_to": activity.get("assigned_to"),
+                "due_date": activity.get("due_date"), 
+                "completed_at": None, 
+                "created_at": activity_instance.created_at
             }
 
     async def update_activity(self, activity_id: str, updates: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -704,8 +726,32 @@ class Storage:
             if not activity:
                 return None
             
+            # Validate parent_activity_id if provided
+            if "parent_activity_id" in updates:
+                parent_activity_id = updates["parent_activity_id"]
+                if parent_activity_id:
+                    # Prevent self-referencing
+                    if parent_activity_id == activity_id:
+                        raise ValueError("An activity cannot be its own parent")
+                    
+                    # Check if parent exists
+                    parent_activity = session.scalar(select(Activity).where(Activity.id == parent_activity_id))
+                    if not parent_activity:
+                        raise ValueError(f"Parent activity with id {parent_activity_id} not found")
+                    
+                    # Prevent circular references (optional, more complex check)
+                    # This prevents A -> B -> A scenarios
+                    current_parent = parent_activity
+                    while current_parent.parent_activity_id:
+                        if str(current_parent.parent_activity_id) == activity_id:
+                            raise ValueError("Circular activity reference detected")
+                        current_parent = session.scalar(select(Activity).where(Activity.id == current_parent.parent_activity_id))
+                        if not current_parent:
+                            break
+            
             update_data = updates.copy()
             field_map = {
+                "parent_activity_id": "parent_activity_id",
                 "type": "type", "title": "title", "description": "description",
                 "status": "status",                 "assigned_to": "assigned_to",
                 "due_date": "due_date", "completed_at": "completed_at"
@@ -729,6 +775,7 @@ class Storage:
                 "id": str(activity.id),
                 "deal_id": str(activity.deal_id) if activity.deal_id else None,
                 "buying_party_id": str(activity.buying_party_id) if activity.buying_party_id else None,
+                "parent_activity_id": str(activity.parent_activity_id) if activity.parent_activity_id else None,
                 "type": activity.type, "title": activity.title, "description": activity.description,
                 "status": activity.status, "assigned_to": activity.assigned_to,
                 "due_date": activity.due_date, "completed_at": activity.completed_at,

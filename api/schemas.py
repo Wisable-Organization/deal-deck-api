@@ -187,6 +187,7 @@ class MatchCreateSchema(BaseSchema):
     target_acquisition = fields.Int(allow_none=True)
     budget = fields.Str(allow_none=True)
     status = fields.Str(load_default="interested")
+    stage = fields.Str(load_default="new")
 
 
 class ActivityResponseSchema(BaseSchema):
@@ -194,6 +195,7 @@ class ActivityResponseSchema(BaseSchema):
     id = fields.Str(required=True)
     deal_id = fields.Str(allow_none=True)
     buying_party_id = fields.Str(allow_none=True)
+    parent_activity_id = fields.Str(allow_none=True)
     type = fields.Str(required=True)
     title = fields.Str(required=True)
     description = fields.Str(allow_none=True)
@@ -208,6 +210,7 @@ class ActivityCreateSchema(BaseSchema):
     """Schema for creating an Activity"""
     deal_id = fields.Str(allow_none=True)
     buying_party_id = fields.Str(allow_none=True)
+    parent_activity_id = fields.Str(allow_none=True)
     type = fields.Str(required=True)
     title = fields.Str(required=True)
     description = fields.Str(allow_none=True)
@@ -218,6 +221,7 @@ class ActivityCreateSchema(BaseSchema):
 
 class ActivityUpdateSchema(BaseSchema):
     """Schema for updating an Activity"""
+    parent_activity_id = fields.Str(allow_none=True)
     type = fields.Str(allow_none=True)
     title = fields.Str(allow_none=True)
     description = fields.Str(allow_none=True)
