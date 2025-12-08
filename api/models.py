@@ -184,6 +184,7 @@ class Activity(Base):
     id = Column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid.uuid4()))
     deal_id = Column(UUID(as_uuid=False), ForeignKey('deals.id'))
     buying_party_id = Column(UUID(as_uuid=False), ForeignKey('buying_parties.id', ondelete='CASCADE'))
+    parent_activity_id = Column(UUID(as_uuid=False), ForeignKey('activities.id', ondelete='CASCADE'))
     type = Column(Text, nullable=False)
     title = Column(Text, nullable=False)
     description = Column(Text)
@@ -195,6 +196,9 @@ class Activity(Base):
 
     deal = relationship("Deal", backref="activities")
     buying_party = relationship("BuyingParty", backref="activities")
+    
+    # Self-referential relationship for parent-child activities
+    parent = relationship("Activity", remote_side=[id], backref="children", foreign_keys=[parent_activity_id])
 
 
 class Document(Base):
