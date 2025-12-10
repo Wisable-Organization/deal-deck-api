@@ -153,8 +153,8 @@ async def create_party_contact(party_id: str, payload: Dict[str, Any] = Body(...
     try:
         # Convert camelCase to snake_case for schema validation
         validated_data = {
-            "buying_party_id": party_id,
-            "contact_id": payload.get("contactId") or payload.get("contact_id"),
+            "buyingPartyId": party_id,
+            "contactId": payload.get("contactId") or payload.get("contact_id"),
             "role": payload.get("role")
         }
         validated = PartyContactCreateSchema().load(validated_data)
