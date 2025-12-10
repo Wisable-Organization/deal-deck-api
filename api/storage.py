@@ -98,6 +98,7 @@ class Storage:
             "health_score": deal_instance.health_score or 85,
             "owner_id": str(deal_instance.owner_id) if deal_instance.owner_id else "",
             "owner": owner_email,
+            "listing_agreement_exclusivity_until": deal_instance.listing_agreement_exclusivity_until,
             "created_at": deal_instance.created_at or datetime.utcnow()
         }
 
@@ -105,9 +106,11 @@ class Storage:
     async def get_deals(self) -> List[Dict[str, Any]]:
         with self.Session() as session:
             # Get deals with company and latest revenue metric
+            # Filter to only show deals where listing agreement exclusivity has been set
             deals = session.scalars(
                 select(Deal)
                 .options(joinedload(Deal.company), joinedload(Deal.owner))
+                .where(Deal.listing_agreement_exclusivity_until.isnot(None))
                 .order_by(Deal.created_at.desc())
             ).all()
             

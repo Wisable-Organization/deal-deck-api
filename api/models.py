@@ -69,6 +69,7 @@ class Deal(Base):
     age_in_stage = Column(Integer, default=0, nullable=False)
     health_score = Column(Integer, default=85, nullable=False)
     owner_id = Column(UUID(as_uuid=False), ForeignKey('auth.users.id'), nullable=False)
+    listing_agreement_exclusivity_until = Column(DateTime(timezone=True))
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
 
     company = relationship("Company", backref="deals")
