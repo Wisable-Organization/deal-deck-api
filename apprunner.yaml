@@ -39,3 +39,9 @@ run:
       value: "true"
     - name: ENVIRONMENT
       value: "production"
+    - name: FRONTEND_URL
+      value-from: "arn:aws:secretsmanager:us-east-2:442707283978:secret:deal-deck-api/frontend-url"
+    - name: EMAIL_FROM_ADDRESS
+      value-from: "arn:aws:secretsmanager:us-east-2:442707283978:secret:deal-deck-api/email-from-address"
+    - name: AWS_REGION
+      value: "us-east-2"

@@ -195,14 +195,17 @@ async def password_reset_request(request: PasswordResetRequest):
     # Store token in database
     await storage.set_recovery_token(user["id"], reset_token)
     
-    # In production, send email with reset link
-    # For now, we'll just return success
-    # The frontend will need to handle the token from the URL
+    # Generate reset link
     reset_link = f"{os.getenv('FRONTEND_URL', 'http://localhost:5173')}/reset-password?token={reset_token}"
     
-    # TODO: Send email with reset_link
-    # For development, you might want to log this:
-    print(f"Password reset link for {request.email}: {reset_link}")
+    # Send email with reset link
+    from api.email_service import send_password_reset_email
+    email_sent = send_password_reset_email(request.email, reset_link)
+    
+    if not email_sent:
+        # Log error but don't reveal to user (security best practice)
+        print(f"Warning: Failed to send password reset email to {request.email}")
+        # In production, you might want to log this to a monitoring service
     
     return PasswordResetResponse(
         message="If the email exists, a password reset link has been sent"
