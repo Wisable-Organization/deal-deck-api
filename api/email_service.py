@@ -1,29 +1,18 @@
 """
-Email service for sending transactional emails using AWS SES
+Email service for sending transactional emails using AWS SES SMTP
 """
 import os
 import logging
-from typing import Optional
-import boto3
-from botocore.exceptions import ClientError, BotoCoreError
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 logger = logging.getLogger(__name__)
-
-# Initialize SES client
-ses_client = None
-
-def get_ses_client():
-    """Get or create SES client"""
-    global ses_client
-    if ses_client is None:
-        aws_region = os.getenv("AWS_REGION", "us-east-2")
-        ses_client = boto3.client("ses", region_name=aws_region)
-    return ses_client
 
 
 def send_password_reset_email(to_email: str, reset_link: str) -> bool:
     """
-    Send password reset email using AWS SES
+    Send password reset email using AWS SES SMTP
     
     Args:
         to_email: Recipient email address
@@ -44,12 +33,24 @@ def send_password_reset_email(to_email: str, reset_link: str) -> bool:
         logger.info(f"[DEV] Reset link: {reset_link}")
         return True
     
+    # Get SMTP configuration
+    smtp_host = os.getenv("SMTP_HOST")
+    smtp_port = int(os.getenv("SMTP_PORT", "587"))
+    smtp_username = os.getenv("SMTP_USERNAME")
+    smtp_password = os.getenv("SMTP_PASSWORD")
+    
+    if not all([smtp_host, smtp_username, smtp_password]):
+        logger.error("SMTP configuration incomplete. Required: SMTP_HOST, SMTP_USERNAME, SMTP_PASSWORD")
+        return False
+    
     try:
-        client = get_ses_client()
+        # Create message
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = "Reset Your Password - Deal Deck"
+        msg["From"] = from_email
+        msg["To"] = to_email
         
-        # Email subject and body
-        subject = "Reset Your Password - Deal Deck"
-        
+        # Email body
         html_body = f"""
         <!DOCTYPE html>
         <html>
@@ -85,40 +86,30 @@ Click the link below to reset your password. This link will expire in 24 hours.
 If you didn't request this password reset, please ignore this email.
         """
         
-        # Send email via SES
-        response = client.send_email(
-            Source=from_email,
-            Destination={
-                "ToAddresses": [to_email]
-            },
-            Message={
-                "Subject": {
-                    "Data": subject,
-                    "Charset": "UTF-8"
-                },
-                "Body": {
-                    "Text": {
-                        "Data": text_body,
-                        "Charset": "UTF-8"
-                    },
-                    "Html": {
-                        "Data": html_body,
-                        "Charset": "UTF-8"
-                    }
-                }
-            }
-        )
+        # Attach parts
+        text_part = MIMEText(text_body, "plain")
+        html_part = MIMEText(html_body, "html")
+        msg.attach(text_part)
+        msg.attach(html_part)
         
-        logger.info(f"Password reset email sent successfully to {to_email}. MessageId: {response['MessageId']}")
+        # Send email via SMTP
+        if smtp_port == 465:
+            # Use SSL for port 465
+            with smtplib.SMTP_SSL(smtp_host, smtp_port) as server:
+                server.login(smtp_username, smtp_password)
+                server.send_message(msg)
+        else:
+            # Use STARTTLS for port 587 (or other ports)
+            with smtplib.SMTP(smtp_host, smtp_port) as server:
+                server.starttls()
+                server.login(smtp_username, smtp_password)
+                server.send_message(msg)
+        
+        logger.info(f"Password reset email sent successfully to {to_email}")
         return True
         
-    except ClientError as e:
-        error_code = e.response.get("Error", {}).get("Code", "Unknown")
-        error_message = e.response.get("Error", {}).get("Message", str(e))
-        logger.error(f"AWS SES error sending email to {to_email}: {error_code} - {error_message}")
-        return False
-    except BotoCoreError as e:
-        logger.error(f"Boto3 error sending email to {to_email}: {str(e)}")
+    except smtplib.SMTPException as e:
+        logger.error(f"SMTP error sending email to {to_email}: {str(e)}")
         return False
     except Exception as e:
         logger.error(f"Unexpected error sending email to {to_email}: {str(e)}")
