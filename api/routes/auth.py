@@ -127,26 +127,27 @@ class UserResponse(BaseModel):
 
 
 # Routes
-@router.post("/register", response_model=RegisterResponse, status_code=status.HTTP_201_CREATED)
-async def register(request: RegisterRequest):
-    """Register a new user"""
-    # Check if user already exists
-    existing_user = await storage.get_user_by_email(request.email)
-    if existing_user:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already registered"
-        )
-    
-    # Hash password and create user
-    hashed_password = get_password_hash(request.password)
-    user = await storage.create_user(request.email, hashed_password)
-    
-    return RegisterResponse(
-        user_id=user["id"],
-        email=user["email"],
-        message="User registered successfully"
-    )
+# Registration endpoint disabled - commented out to hide registration
+# @router.post("/register", response_model=RegisterResponse, status_code=status.HTTP_201_CREATED)
+# async def register(request: RegisterRequest):
+#     """Register a new user"""
+#     # Check if user already exists
+#     existing_user = await storage.get_user_by_email(request.email)
+#     if existing_user:
+#         raise HTTPException(
+#             status_code=status.HTTP_400_BAD_REQUEST,
+#             detail="Email already registered"
+#         )
+#     
+#     # Hash password and create user
+#     hashed_password = get_password_hash(request.password)
+#     user = await storage.create_user(request.email, hashed_password)
+#     
+#     return RegisterResponse(
+#         user_id=user["id"],
+#         email=user["email"],
+#         message="User registered successfully"
+#     )
 
 
 @router.post("/login", response_model=LoginResponse)
