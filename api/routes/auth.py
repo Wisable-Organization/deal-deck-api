@@ -6,7 +6,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, status, Depends
 from fastapi.security import HTTPBearer
 from pydantic import BaseModel, field_validator
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import os
 import re
 
@@ -225,7 +225,13 @@ async def password_reset_confirm(request: PasswordResetConfirm):
     
     # Check if token is expired (24 hours)
     if user["recovery_sent_at"]:
-        token_age = datetime.utcnow() - user["recovery_sent_at"]
+        # Ensure both datetimes are timezone-aware for comparison
+        now = datetime.now(timezone.utc)
+        recovery_time = user["recovery_sent_at"]
+        # If recovery_sent_at is naive, make it timezone-aware (UTC)
+        if recovery_time.tzinfo is None:
+            recovery_time = recovery_time.replace(tzinfo=timezone.utc)
+        token_age = now - recovery_time
         if token_age > timedelta(hours=PASSWORD_RESET_TOKEN_EXPIRE_HOURS):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
