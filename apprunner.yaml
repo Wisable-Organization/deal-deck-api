@@ -39,17 +39,15 @@ run:
     - name: EMAIL_FROM_ADDRESS
       value-from: "arn:aws:secretsmanager:us-east-2:442707283978:secret:deal-deck-api/email-from-address"
     - name: SMTP_USERNAME
-      value-from: "arn:aws:secretsmanager:us-east-2:442707283978:secret:deal-deck-api/smtp-username"
+      value-from: "arn:aws:secretsmanager:us-east-2:442707283978:secret:deal-deck-api/email-from-address"
     - name: SMTP_PASSWORD
-      value-from: "arn:aws:secretsmanager:us-east-2:442707283978:secret:deal-deck-api/smtp-password"
+      value-from: "arn:aws:secretsmanager:us-east-2:442707283978:secret:deal-deck-api/gmail-smtp-app-password"
   env:
     - name: USE_SUPABASE
       value: "true"
     - name: ENVIRONMENT
       value: "production"
-    - name: AWS_REGION
-      value: "us-east-2"
     - name: SMTP_HOST
-      value: "email-smtp.us-east-2.amazonaws.com"
+      value: "smtp.gmail.com"
     - name: SMTP_PORT
       value: "587"

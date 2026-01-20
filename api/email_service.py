@@ -1,5 +1,5 @@
 """
-Email service for sending transactional emails using AWS SES SMTP
+Email service for sending transactional emails using Gmail SMTP
 """
 import os
 import logging
@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 def send_password_reset_email(to_email: str, reset_link: str) -> bool:
     """
-    Send password reset email using AWS SES SMTP
+    Send password reset email using Gmail SMTP
     
     Args:
         to_email: Recipient email address
