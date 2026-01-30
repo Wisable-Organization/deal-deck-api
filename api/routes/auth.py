@@ -6,7 +6,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, status, Depends
 from fastapi.security import HTTPBearer
 from pydantic import BaseModel, field_validator
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import os
 import re
 
@@ -127,26 +127,27 @@ class UserResponse(BaseModel):
 
 
 # Routes
-@router.post("/register", response_model=RegisterResponse, status_code=status.HTTP_201_CREATED)
-async def register(request: RegisterRequest):
-    """Register a new user"""
-    # Check if user already exists
-    existing_user = await storage.get_user_by_email(request.email)
-    if existing_user:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already registered"
-        )
-    
-    # Hash password and create user
-    hashed_password = get_password_hash(request.password)
-    user = await storage.create_user(request.email, hashed_password)
-    
-    return RegisterResponse(
-        user_id=user["id"],
-        email=user["email"],
-        message="User registered successfully"
-    )
+# Registration endpoint disabled - commented out to hide registration
+# @router.post("/register", response_model=RegisterResponse, status_code=status.HTTP_201_CREATED)
+# async def register(request: RegisterRequest):
+#     """Register a new user"""
+#     # Check if user already exists
+#     existing_user = await storage.get_user_by_email(request.email)
+#     if existing_user:
+#         raise HTTPException(
+#             status_code=status.HTTP_400_BAD_REQUEST,
+#             detail="Email already registered"
+#         )
+#     
+#     # Hash password and create user
+#     hashed_password = get_password_hash(request.password)
+#     user = await storage.create_user(request.email, hashed_password)
+#     
+#     return RegisterResponse(
+#         user_id=user["id"],
+#         email=user["email"],
+#         message="User registered successfully"
+#     )
 
 
 @router.post("/login", response_model=LoginResponse)
@@ -195,14 +196,17 @@ async def password_reset_request(request: PasswordResetRequest):
     # Store token in database
     await storage.set_recovery_token(user["id"], reset_token)
     
-    # In production, send email with reset link
-    # For now, we'll just return success
-    # The frontend will need to handle the token from the URL
+    # Generate reset link
     reset_link = f"{os.getenv('FRONTEND_URL', 'http://localhost:5173')}/reset-password?token={reset_token}"
     
-    # TODO: Send email with reset_link
-    # For development, you might want to log this:
-    print(f"Password reset link for {request.email}: {reset_link}")
+    # Send email with reset link
+    from api.email_service import send_password_reset_email
+    email_sent = send_password_reset_email(request.email, reset_link)
+    
+    if not email_sent:
+        # Log error but don't reveal to user (security best practice)
+        print(f"Warning: Failed to send password reset email to {request.email}")
+        # In production, you might want to log this to a monitoring service
     
     return PasswordResetResponse(
         message="If the email exists, a password reset link has been sent"
@@ -222,7 +226,13 @@ async def password_reset_confirm(request: PasswordResetConfirm):
     
     # Check if token is expired (24 hours)
     if user["recovery_sent_at"]:
-        token_age = datetime.utcnow() - user["recovery_sent_at"]
+        # Ensure both datetimes are timezone-aware for comparison
+        now = datetime.now(timezone.utc)
+        recovery_time = user["recovery_sent_at"]
+        # If recovery_sent_at is naive, make it timezone-aware (UTC)
+        if recovery_time.tzinfo is None:
+            recovery_time = recovery_time.replace(tzinfo=timezone.utc)
+        token_age = now - recovery_time
         if token_age > timedelta(hours=PASSWORD_RESET_TOKEN_EXPIRE_HOURS):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,

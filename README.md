@@ -262,9 +262,64 @@ Authentication:
 - `SUPABASE_SERVICE_ROLE_KEY` - Your Supabase service role key (backend only, keep secret)
 - `DATABASE_URL` - PostgreSQL connection string
 
+**Required for Email (Production):**
+- `EMAIL_FROM_ADDRESS` - The email address that will send password reset emails (must be verified in AWS SES)
+- `FRONTEND_URL` - Your frontend URL for password reset links (e.g., `https://yourdomain.com`)
+- `AWS_REGION` - AWS region where SES is configured (defaults to `us-east-2`)
+
 **Development:**
 - No environment variables required (uses in-memory storage)
 - CORS configured for `http://localhost:5173`
+- Email sending is logged to console in development mode (doesn't actually send emails)
+
+### AWS SES Setup (Email Sending)
+
+To enable password reset emails in production, you need to configure AWS SES:
+
+1. **Verify Email Address or Domain in SES:**
+   - Go to AWS Console → SES → Verified identities
+   - Click "Create identity"
+   - Choose "Email address" or "Domain" (recommended for production)
+   - Follow verification steps (check email or add DNS records)
+
+2. **Request Production Access (if in sandbox mode):**
+   - By default, SES starts in sandbox mode (can only send to verified emails)
+   - Go to SES → Account dashboard → Request production access
+   - Fill out the form and wait for approval (usually 24 hours)
+
+3. **Configure IAM Permissions:**
+   - Find your App Runner service role in IAM
+   - Attach a policy with these permissions:
+   ```json
+   {
+     "Version": "2012-10-17",
+     "Statement": [
+       {
+         "Effect": "Allow",
+         "Action": [
+           "ses:SendEmail",
+           "ses:SendRawEmail"
+         ],
+         "Resource": "*"
+       }
+     ]
+   }
+   ```
+   - Or use the managed policy: `AmazonSESFullAccess` (less restrictive)
+
+4. **Set Up Secrets in AWS Secrets Manager:**
+   - Create secrets for:
+     - `deal-deck-api/frontend-url` - Your frontend URL (e.g., `https://app.yourdomain.com`)
+     - `deal-deck-api/email-from-address` - Verified email/domain (e.g., `noreply@yourdomain.com`)
+
+5. **Update Environment Variables:**
+   - The `apprunner.yaml` already references these secrets
+   - Ensure `AWS_REGION` matches your SES region (defaults to `us-east-2`)
+
+**Testing:**
+- In development mode (`ENVIRONMENT=dev`), emails are logged to console instead of being sent
+- In production, emails are sent via AWS SES
+- Monitor SES sending statistics in CloudWatch
 
 ### Database Schema (Supabase Setup)
 

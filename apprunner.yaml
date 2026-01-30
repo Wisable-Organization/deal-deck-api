@@ -34,8 +34,20 @@ run:
       value-from: "arn:aws:secretsmanager:us-east-2:442707283978:secret:deal-deck-api/database-url"
     - name: SUPABASE_DATABASE_URL
       value-from: "arn:aws:secretsmanager:us-east-2:442707283978:secret:deal-deck-api/supabase-database-url"
+    - name: FRONTEND_URL
+      value-from: "arn:aws:secretsmanager:us-east-2:442707283978:secret:deal-deck-api/frontend-url"
+    - name: EMAIL_FROM_ADDRESS
+      value-from: "arn:aws:secretsmanager:us-east-2:442707283978:secret:deal-deck-api/email-from-address"
+    - name: SMTP_USERNAME
+      value-from: "arn:aws:secretsmanager:us-east-2:442707283978:secret:deal-deck-api/email-from-address"
+    - name: SMTP_PASSWORD
+      value-from: "arn:aws:secretsmanager:us-east-2:442707283978:secret:deal-deck-api/gmail-smtp-app-password"
   env:
     - name: USE_SUPABASE
       value: "true"
     - name: ENVIRONMENT
       value: "production"
+    - name: SMTP_HOST
+      value: "smtp.gmail.com"
+    - name: SMTP_PORT
+      value: "587"
